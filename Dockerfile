@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y \
 # Copy the Deno JavaScript runtime from the official binary image to enable yt-dlp signature deciphering!
 COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
 
+# Copy the bgutil-pot binary for Proof of Origin (PO) Token generation!
+COPY --from=ghcr.io/jim60105/bgutil-pot:latest /usr/local/bin/bgutil-pot /usr/local/bin/bgutil-pot
+
 # Set working directory
 WORKDIR /app
 

@@ -7,6 +7,7 @@ import tempfile
 import uuid
 import threading
 import time
+import subprocess
 from flask import Flask, request, jsonify, render_template, Response, stream_with_context
 import yt_dlp
 import requests
@@ -27,6 +28,18 @@ except Exception as e:
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 
+# Programmatically start the bgutil-pot PO Token provider server in the background
+try:
+    subprocess.Popen(
+        ["bgutil-pot", "server", "--host", "127.0.0.1", "--port", "4416"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+    print("TubeFlow: bgutil-pot PO Token server successfully started on 127.0.0.1:4416!")
+except Exception as e:
+    print("TubeFlow Warning: bgutil-pot server could not be started:", str(e))
+
+
 # Helper to generate yt-dlp options with browser impersonation and alternative player clients to bypass cloud blocking / SSL EOF / bot checks
 def get_ydl_opts(extra_opts=None):
     opts = {
@@ -39,6 +52,9 @@ def get_ydl_opts(extra_opts=None):
         'extractor_args': {
             'youtube': {
                 'player_client': ['android', 'ios', 'tv', 'creator']
+            },
+            'youtubepot-bgutilhttp': {
+                'base_url': 'http://127.0.0.1:4416'
             }
         }
     }
@@ -439,6 +455,9 @@ def get_info():
                     'extractor_args': {
                         'youtube': {
                             'player_client': ['android', 'ios', 'tv', 'creator']
+                        },
+                        'youtubepot-bgutilhttp': {
+                            'base_url': 'http://127.0.0.1:4416'
                         }
                     }
                 }
@@ -699,6 +718,9 @@ def async_download_worker(url, format_id, task_id, title, is_merge):
                 'extractor_args': {
                     'youtube': {
                         'player_client': ['android', 'ios', 'tv', 'creator']
+                    },
+                    'youtubepot-bgutilhttp': {
+                        'base_url': 'http://127.0.0.1:4416'
                     }
                 }
             }
@@ -830,6 +852,9 @@ def start_async_download():
                     'extractor_args': {
                         'youtube': {
                             'player_client': ['ios', 'web_embedded']
+                        },
+                        'youtubepot-bgutilhttp': {
+                            'base_url': 'http://127.0.0.1:4416'
                         }
                     }
                 }
