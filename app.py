@@ -103,6 +103,91 @@ PIPED_INSTANCES = [
     'https://pipedapi.smnz.de'
 ]
 
+COBALT_INSTANCES = [
+    'https://api.cobalt.tools',
+    'https://cobalt.api.ryz.cx',
+    'https://cobalt.best',
+    'https://cobalt.moe'
+]
+
+def get_dynamic_invidious_instances():
+    try:
+        r = requests.get("https://api.invidious.io/instances.json?sort_by=type,health", timeout=3.5)
+        if r.status_code == 200:
+            data = r.json()
+            instances = []
+            for item in data:
+                domain = item[0]
+                details = item[1]
+                if details.get('type') == 'https' and details.get('api', True):
+                    uri = details.get('uri') or f"https://{domain}"
+                    instances.append(uri)
+            if instances:
+                return instances[:8]
+    except Exception:
+        pass
+    return INVIDIOUS_INSTANCES
+
+def query_single_cobalt(instance, url):
+    try:
+        headers = {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        payload = {
+            'url': url,
+            'vQuality': '720',
+            'filenamePattern': 'classic'
+        }
+        for path in ["/api/json", ""]:
+            try:
+                target_url = f"{instance.rstrip('/')}{path}"
+                if curl_requests:
+                    response = curl_requests.post(target_url, headers=headers, json=payload, impersonate="chrome", timeout=5)
+                else:
+                    response = requests.post(target_url, headers=headers, json=payload, timeout=5)
+                if response.status_code == 200:
+                    data = response.json()
+                    if data and data.get('status') in ['stream', 'redirect', 'tunnel', 'picker']:
+                        return {'source': 'cobalt', 'data': data, 'instance': instance}
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return None
+
+def parse_cobalt_info(data, url):
+    title = data.get('filename') or "Extracted Video"
+    if title.endswith('.mp4') or title.endswith('.mkv') or title.endswith('.webm'):
+        title = title.rsplit('.', 1)[0]
+    direct_url = data.get('url')
+    payload = f"{direct_url}|{title}|mp4"
+    encoded_id = base64.b64encode(payload.encode('utf-8')).decode('utf-8')
+    video_formats = [{
+        'format_id': encoded_id,
+        'ext': 'mp4',
+        'resolution': '720p',
+        'quality_label': '720p',
+        'filesize': 0,
+        'type': 'combined',
+        'note': 'Direct HD Stream (Bypassed)'
+    }]
+    return {
+        'title': title,
+        'author': 'Cobalt Attestation Bypass',
+        'thumbnail': 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?q=80&w=300&auto=format&fit=crop',
+        'duration': 0,
+        'duration_formatted': 'Direct',
+        'views': 1000,
+        'views_formatted': 'Active Stream',
+        'description': 'Bypassed successfully via multi-layered dynamic proxy fallback routing.',
+        'video_formats': video_formats,
+        'audio_formats': [],
+        'url': url
+    }
+
+
 # Helper to extract 11-character YouTube video ID
 def extract_youtube_id(url):
     pattern = r'(?:https?://)?(?:www\.)?(?:youtube\.com/(?:watch\?v=|embed/|v/|shorts/)|youtu\.be/)([a-zA-Z0-9_-]{11})'
@@ -154,18 +239,26 @@ def fetch_youtube_via_fallback_apis(url):
     if not video_id:
         return None
         
-    # Query all Invidious and Piped instances concurrently for sub-second responses!
-    with ThreadPoolExecutor(max_workers=len(INVIDIOUS_INSTANCES) + len(PIPED_INSTANCES)) as executor:
+    dynamic_invidious = get_dynamic_invidious_instances()
+    
+    # Query all Invidious, Piped, and Cobalt instances concurrently for sub-second responses!
+    total_workers = len(dynamic_invidious) + len(PIPED_INSTANCES) + len(COBALT_INSTANCES)
+    with ThreadPoolExecutor(max_workers=total_workers) as executor:
         futures = []
-        for inst in INVIDIOUS_INSTANCES:
+        for inst in dynamic_invidious:
             futures.append(executor.submit(query_single_invidious, inst, video_id))
         for inst in PIPED_INSTANCES:
             futures.append(executor.submit(query_single_piped, inst, video_id))
+        for inst in COBALT_INSTANCES:
+            futures.append(executor.submit(query_single_cobalt, inst, url))
             
         for future in as_completed(futures):
-            res = future.result()
-            if res:
-                return res
+            try:
+                res = future.result()
+                if res:
+                    return res
+            except Exception:
+                pass
     return None
 
 # Mapper to translate Invidious JSON payload to TubeFlow Ultimate UI schema
@@ -497,8 +590,8 @@ def get_info():
                     pass
             
         if not info:
-            # Fallback to Invidious & Piped APIs to bypass the datacenter IP bot block!
-            print("TubeFlow: yt-dlp blocked. Triggering Invidious/Piped APIs fallback...")
+            # Fallback to Invidious, Piped & Cobalt APIs to bypass the datacenter IP bot block!
+            print("TubeFlow: yt-dlp blocked. Triggering Invidious/Piped/Cobalt APIs fallback...")
             fallback_res = fetch_youtube_via_fallback_apis(url)
             if fallback_res:
                 source = fallback_res['source']
@@ -507,6 +600,8 @@ def get_info():
                 print(f"TubeFlow: Successfully extracted details via fallback {source} instance: {instance}")
                 if source == 'invidious':
                     parsed_res = parse_invidious_info(data, url)
+                elif source == 'cobalt':
+                    parsed_res = parse_cobalt_info(data, url)
                 else:
                     parsed_res = parse_piped_info(data, url)
                 return jsonify(parsed_res)
