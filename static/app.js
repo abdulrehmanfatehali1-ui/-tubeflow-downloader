@@ -150,6 +150,30 @@ function getYouTubeId(url) {
     return (match && match[2].length === 11) ? match[2] : null;
 }
 
+// Smart Filesize Estimator for dynamic resolutions
+function estimateSize(quality, duration, isAudio = false) {
+    if (!duration || duration <= 0) return 0;
+    if (isAudio) {
+        const q = (quality || '').toLowerCase();
+        let bytesPerSec = 24000; // ~192kbps (Default)
+        if (q.includes('320')) bytesPerSec = 40000;
+        else if (q.includes('256')) bytesPerSec = 32000;
+        else if (q.includes('128')) bytesPerSec = 16000;
+        else if (q.includes('64')) bytesPerSec = 8000;
+        return bytesPerSec * duration;
+    }
+    const q = (quality || '').toLowerCase();
+    let bytesPerSec = 100000; // ~800kbps (Default)
+    if (q.includes('2160') || q.includes('4k')) bytesPerSec = 2200000; // ~2.2 MB/s
+    else if (q.includes('1440') || q.includes('2k')) bytesPerSec = 1200000; // ~1.2 MB/s
+    else if (q.includes('1080')) bytesPerSec = 550000; // ~550 KB/s
+    else if (q.includes('720')) bytesPerSec = 300000; // ~300 KB/s
+    else if (q.includes('480')) bytesPerSec = 150000; // ~150 KB/s
+    else if (q.includes('360')) bytesPerSec = 80000;  // ~80 KB/s
+    else if (q.includes('240')) bytesPerSec = 40000;
+    return bytesPerSec * duration;
+}
+
 // Client-Side Invidious payload mapper
 function parseInvidiousClientSide(data, url) {
     const title = data.title || 'Unknown Video';
@@ -176,12 +200,17 @@ function parseInvidiousClientSide(data, url) {
         const payload = `${f.url}|${title}|${ext}`;
         const encoded_id = btoa(unescape(encodeURIComponent(payload)));
         
+        let size = parseInt(f.size) || 0;
+        if (!size || size < 50000) {
+            size = estimateSize(quality, duration);
+        }
+        
         video_formats.push({
             format_id: encoded_id,
             ext: ext,
             resolution: f.resolution || '',
             quality_label: quality,
-            filesize: parseInt(f.size) || 0,
+            filesize: size,
             type: 'combined',
             note: `Direct Stream (${ext.toUpperCase()})`
         });
@@ -197,22 +226,34 @@ function parseInvidiousClientSide(data, url) {
         if (mime.includes('audio/')) {
             const quality = f.audioQuality || 'High Quality';
             const bitrate = Math.floor(parseInt(f.bitrate || 0) / 1000);
+            
+            let size = parseInt(f.size) || 0;
+            if (!size || size < 10000) {
+                size = estimateSize(quality, duration, true);
+            }
+            
             audio_formats.push({
                 format_id: encoded_id,
                 ext: ext,
                 quality_label: bitrate ? `${bitrate}kbps` : quality,
-                filesize: parseInt(f.size) || 0,
+                filesize: size,
                 type: 'audio',
                 note: `Audio only (${ext.toUpperCase()})`
             });
         } else if (mime.includes('video/')) {
             const quality = f.qualityLabel || '360p';
+            
+            let size = parseInt(f.size) || 0;
+            if (!size || size < 50000) {
+                size = estimateSize(quality, duration);
+            }
+            
             video_formats.push({
                 format_id: encoded_id,
                 ext: ext,
                 resolution: f.resolution || '',
                 quality_label: quality,
-                filesize: parseInt(f.size) || 0,
+                filesize: size,
                 type: 'combined',
                 note: 'Direct Video'
             });
@@ -259,12 +300,23 @@ function parsePipedClientSide(data, url) {
         const payload = `${f.url}|${title}|${ext}`;
         const encoded_id = btoa(unescape(encodeURIComponent(payload)));
         
+        let size = parseInt(f.size) || 0;
+        if (!size || size < 50000) {
+            // Check Piped bitrate fallback estimation
+            const apiBitrate = parseInt(f.bitrate || 0);
+            if (apiBitrate > 10000) {
+                size = Math.floor((apiBitrate * duration) / 8);
+            } else {
+                size = estimateSize(quality, duration);
+            }
+        }
+        
         video_formats.push({
             format_id: encoded_id,
             ext: ext,
             resolution: quality,
             quality_label: quality,
-            filesize: Math.floor((parseInt(f.bitrate || 0) * duration) / 8) || 0,
+            filesize: size,
             type: 'combined',
             note: 'Direct Video'
         });
@@ -278,11 +330,21 @@ function parsePipedClientSide(data, url) {
         const payload = `${f.url}|${title}|${ext}`;
         const encoded_id = btoa(unescape(encodeURIComponent(payload)));
         
+        let size = parseInt(f.size) || 0;
+        if (!size || size < 10000) {
+            const apiBitrate = parseInt(f.bitrate || 0);
+            if (apiBitrate > 5000) {
+                size = Math.floor((apiBitrate * duration) / 8);
+            } else {
+                size = estimateSize(quality, duration, true);
+            }
+        }
+        
         audio_formats.push({
             format_id: encoded_id,
             ext: ext,
             quality_label: bitrate ? `${bitrate}kbps` : quality,
-            filesize: Math.floor((parseInt(f.bitrate || 0) * duration) / 8) || 0,
+            filesize: size,
             type: 'audio',
             note: `Audio only (${ext.toUpperCase()})`
         });
