@@ -310,19 +310,22 @@ def get_info():
                 info = ydl.extract_info(url, download=False)
         except Exception as e:
             print(f"TubeFlow: Impersonation extraction failed ({str(e)}). Retrying with standard options...")
-            fallback_opts = {
-                'quiet': True,
-                'no_warnings': True,
-                'nocheckcertificate': True,
-                'extract_flat': False,
-                'extractor_args': {
-                    'youtube': {
-                        'player_client': ['ios', 'web_embedded']
+            try:
+                fallback_opts = {
+                    'quiet': True,
+                    'no_warnings': True,
+                    'nocheckcertificate': True,
+                    'extract_flat': False,
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': ['ios', 'web_embedded']
+                        }
                     }
                 }
-            }
-            with yt_dlp.YoutubeDL(fallback_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
+                with yt_dlp.YoutubeDL(fallback_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+            except Exception as e2:
+                print(f"TubeFlow: Standard fallback extraction failed ({str(e2)}).")
             
         if not info:
             # Fallback to Invidious API to bypass the datacenter IP bot block!
@@ -693,18 +696,21 @@ def start_async_download():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
         except Exception:
-            fallback_opts = {
-                'quiet': True,
-                'no_warnings': True,
-                'nocheckcertificate': True,
-                'extractor_args': {
-                    'youtube': {
-                        'player_client': ['ios', 'web_embedded']
+            try:
+                fallback_opts = {
+                    'quiet': True,
+                    'no_warnings': True,
+                    'nocheckcertificate': True,
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': ['ios', 'web_embedded']
+                        }
                     }
                 }
-            }
-            with yt_dlp.YoutubeDL(fallback_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
+                with yt_dlp.YoutubeDL(fallback_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+            except Exception:
+                pass
             
         if not info:
             return jsonify({'error': 'Could not extract video details'}), 400
