@@ -143,7 +143,270 @@ function isValidUrl(url) {
     }
 }
 
-// Fetch Video Metadata from Backend (Supports Universal extraction!)
+// Extract 11-char YouTube ID in Javascript
+function getYouTubeId(url) {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+}
+
+// Client-Side Invidious payload mapper
+function parseInvidiousClientSide(data, url) {
+    const title = data.title || 'Unknown Video';
+    const author = data.author || 'Unknown Creator';
+    
+    let thumbnail = "";
+    const thumbnails = data.videoThumbnails || [];
+    if (thumbnails.length > 0) {
+        thumbnails.sort((a, b) => (b.width || 0) - (a.width || 0));
+        thumbnail = thumbnails[0].url || '';
+    }
+    
+    const duration = data.lengthSeconds || 0;
+    const views = data.viewCount || 0;
+    const description = (data.description || '').substring(0, 300) + '...';
+    
+    const video_formats = [];
+    const audio_formats = [];
+    
+    // Process formatStreams
+    (data.formatStreams || []).forEach(f => {
+        const ext = f.container || 'mp4';
+        const quality = f.qualityLabel || '360p';
+        const payload = `${f.url}|${title}|${ext}`;
+        const encoded_id = btoa(unescape(encodeURIComponent(payload)));
+        
+        video_formats.push({
+            format_id: encoded_id,
+            ext: ext,
+            resolution: f.resolution || '',
+            quality_label: quality,
+            filesize: parseInt(f.size) || 0,
+            type: 'combined',
+            note: `Direct Stream (${ext.toUpperCase()})`
+        });
+    });
+    
+    // Process adaptiveFormats
+    (data.adaptiveFormats || []).forEach(f => {
+        const mime = f.type || '';
+        const ext = f.container || 'mp4';
+        const payload = `${f.url}|${title}|${ext}`;
+        const encoded_id = btoa(unescape(encodeURIComponent(payload)));
+        
+        if (mime.includes('audio/')) {
+            const quality = f.audioQuality || 'High Quality';
+            const bitrate = Math.floor(parseInt(f.bitrate || 0) / 1000);
+            audio_formats.push({
+                format_id: encoded_id,
+                ext: ext,
+                quality_label: bitrate ? `${bitrate}kbps` : quality,
+                filesize: parseInt(f.size) || 0,
+                type: 'audio',
+                note: `Audio only (${ext.toUpperCase()})`
+            });
+        } else if (mime.includes('video/')) {
+            const quality = f.qualityLabel || '360p';
+            video_formats.push({
+                format_id: encoded_id,
+                ext: ext,
+                resolution: f.resolution || '',
+                quality_label: quality,
+                filesize: parseInt(f.size) || 0,
+                type: 'combined',
+                note: 'Direct Video'
+            });
+        }
+    });
+    
+    video_formats.sort((a, b) => {
+        const ha = parseInt(a.quality_label) || 0;
+        const hb = parseInt(b.quality_label) || 0;
+        return hb - ha;
+    });
+    
+    return {
+        title,
+        author,
+        thumbnail,
+        duration,
+        duration_formatted: formatDurationClientSide(duration),
+        views,
+        views_formatted: formatViewsClientSide(views),
+        description,
+        video_formats,
+        audio_formats,
+        url
+    };
+}
+
+// Client-Side Piped payload mapper
+function parsePipedClientSide(data, url) {
+    const title = data.title || 'Unknown Video';
+    const author = data.uploader || 'Unknown Creator';
+    const thumbnail = data.thumbnailUrl || '';
+    const duration = data.duration || 0;
+    const views = data.views || 0;
+    const description = (data.description || '').substring(0, 300) + '...';
+    
+    const video_formats = [];
+    const audio_formats = [];
+    
+    (data.videoStreams || []).forEach(f => {
+        const mime = f.mimeType || '';
+        const ext = mime.includes('video/mp4') ? 'mp4' : 'webm';
+        const quality = f.quality || '360p';
+        const payload = `${f.url}|${title}|${ext}`;
+        const encoded_id = btoa(unescape(encodeURIComponent(payload)));
+        
+        video_formats.push({
+            format_id: encoded_id,
+            ext: ext,
+            resolution: quality,
+            quality_label: quality,
+            filesize: Math.floor((parseInt(f.bitrate || 0) * duration) / 8) || 0,
+            type: 'combined',
+            note: 'Direct Video'
+        });
+    });
+    
+    (data.audioStreams || []).forEach(f => {
+        const mime = f.mimeType || '';
+        const ext = mime.includes('audio/mp4') ? 'm4a' : 'webm';
+        const quality = f.quality || 'High Quality';
+        const bitrate = Math.floor(parseInt(f.bitrate || 0) / 1000);
+        const payload = `${f.url}|${title}|${ext}`;
+        const encoded_id = btoa(unescape(encodeURIComponent(payload)));
+        
+        audio_formats.push({
+            format_id: encoded_id,
+            ext: ext,
+            quality_label: bitrate ? `${bitrate}kbps` : quality,
+            filesize: Math.floor((parseInt(f.bitrate || 0) * duration) / 8) || 0,
+            type: 'audio',
+            note: `Audio only (${ext.toUpperCase()})`
+        });
+    });
+    
+    video_formats.sort((a, b) => {
+        const ha = parseInt(a.quality_label) || 0;
+        const hb = parseInt(b.quality_label) || 0;
+        return hb - ha;
+    });
+    
+    return {
+        title,
+        author,
+        thumbnail,
+        duration,
+        duration_formatted: formatDurationClientSide(duration),
+        views,
+        views_formatted: formatViewsClientSide(views),
+        description,
+        video_formats,
+        audio_formats,
+        url
+    };
+}
+
+// Client-Side format helpers
+function formatDurationClientSide(seconds) {
+    if (!seconds) return "0:00";
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    if (hrs > 0) {
+        return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+function formatViewsClientSide(views) {
+    if (!views) return "0 views";
+    const num = parseInt(views);
+    if (num >= 1e9) return (num / 1e9).toFixed(1) + "B views";
+    if (num >= 1e6) return (num / 1e6).toFixed(1) + "M views";
+    if (num >= 1e3) return (num / 1e3).toFixed(1) + "K views";
+    return num + " views";
+}
+
+async function extractYouTubeClientSide(url) {
+    const videoId = getYouTubeId(url);
+    if (!videoId) throw new Error("Could not extract Video ID");
+    
+    const targets = [
+        { type: 'invidious', url: `https://invidious.projectsegfau.lt/api/v1/videos/${videoId}` },
+        { type: 'invidious', url: `https://invidious.no-logs.com/api/v1/videos/${videoId}` },
+        { type: 'invidious', url: `https://inv.tux.im/api/v1/videos/${videoId}` },
+        { type: 'invidious', url: `https://yewtu.be/api/v1/videos/${videoId}` },
+        { type: 'piped', url: `https://pipedapi.colbyland.org/streams/${videoId}` },
+        { type: 'piped', url: `https://pipedapi.kavin.rocks/streams/${videoId}` },
+        { type: 'piped', url: `https://pipedapi.ram.icu/streams/${videoId}` }
+    ];
+    
+    try {
+        const regRes = await fetch("https://api.invidious.io/instances.json?sort_by=type,health");
+        if (regRes.ok) {
+            const regData = await regRes.json();
+            let count = 0;
+            for (let item of regData) {
+                const domain = item[0];
+                const details = item[1];
+                if (details.type === 'https' && details.api !== false && count < 5) {
+                    const uri = details.uri || `https://${domain}`;
+                    targets.push({ type: 'invidious', url: `${uri}/api/v1/videos/${videoId}` });
+                    count++;
+                }
+            }
+        }
+    } catch (_) {}
+    
+    return new Promise((resolve, reject) => {
+        let completed = 0;
+        let errors = [];
+        const controllers = [];
+        
+        targets.forEach(target => {
+            const controller = new AbortController();
+            controllers.push(controller);
+            
+            fetch(target.url, { signal: controller.signal })
+                .then(async res => {
+                    if (res.ok) {
+                        const json = await res.json();
+                        controllers.forEach(c => c.abort());
+                        
+                        try {
+                            const parsed = target.type === 'invidious' 
+                                ? parseInvidiousClientSide(json, url)
+                                : parsePipedClientSide(json, url);
+                            resolve(parsed);
+                        } catch (err) {
+                            reject(err);
+                        }
+                    } else {
+                        throw new Error(`HTTP ${res.status}`);
+                    }
+                })
+                .catch(err => {
+                    if (err.name !== 'AbortError') {
+                        errors.push(err);
+                        completed++;
+                        if (completed >= targets.length) {
+                            reject(new Error("All client-side extraction nodes failed."));
+                        }
+                    }
+                });
+        });
+        
+        setTimeout(() => {
+            controllers.forEach(c => c.abort());
+            reject(new Error("Client-side extraction timed out."));
+        }, 7000);
+    });
+}
+
+// Fetch Video Metadata (Supports client-side unblockable YouTube extraction!)
 async function handleFetch(urlToFetch = null) {
     const url = urlToFetch || urlInput.value.trim();
     if (!url) {
@@ -157,7 +420,7 @@ async function handleFetch(urlToFetch = null) {
     }
 
     // Set Loading State
-    showStatus('Connecting to platform and extracting media details... This takes a few seconds.', 'loading');
+    showStatus('Connecting and bypassing blockages... Please wait.', 'loading');
     setLoading(true);
     resultsSection.classList.add('hidden');
     progressSection.classList.add('hidden');
@@ -167,30 +430,45 @@ async function handleFetch(urlToFetch = null) {
         activeDownloadInterval = null;
     }
     
-    try {
-        const response = await fetch(`/api/info?url=${encodeURIComponent(url)}`);
-        const data = await response.json();
-        
-        if (!response.ok || data.error) {
-            throw new Error(data.error || 'Failed to extract video information from this link');
+    let data = null;
+    let isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
+    
+    if (isYouTube) {
+        showStatus('Bypassing YouTube server blocks via unblockable client-side routing...', 'loading');
+        try {
+            data = await extractYouTubeClientSide(url);
+        } catch (clientErr) {
+            console.warn("Client-side extraction failed, falling back to server:", clientErr);
         }
-        
-        currentVideo = data;
-        displayResults(data);
-        saveToHistory(data);
-        showStatus('Media successfully analyzed!', 'success');
-        
-        // Smooth scroll to results
-        setTimeout(() => {
-            resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 150);
-        
-    } catch (error) {
-        console.error(error);
-        showStatus(`Error: ${error.message || 'Something went wrong. Please check your link or network connection.'}`, 'error');
-    } finally {
-        setLoading(false);
     }
+    
+    if (!data) {
+        showStatus('Connecting to platform and extracting media details... This takes a few seconds.', 'loading');
+        try {
+            const response = await fetch(`/api/info?url=${encodeURIComponent(url)}`);
+            data = await response.json();
+            
+            if (!response.ok || data.error) {
+                throw new Error(data.error || 'Failed to extract video information from this link');
+            }
+        } catch (error) {
+            console.error(error);
+            showStatus(`Error: ${error.message || 'Something went wrong. Please check your link or network connection.'}`, 'error');
+            setLoading(false);
+            return;
+        }
+    }
+    
+    currentVideo = data;
+    displayResults(data);
+    saveToHistory(data);
+    showStatus('Media successfully analyzed!', 'success');
+    
+    // Smooth scroll to results
+    setTimeout(() => {
+        resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
+    setLoading(false);
 }
 
 // Render Loading Spinner state
