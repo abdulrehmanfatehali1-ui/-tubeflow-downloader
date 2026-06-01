@@ -1,4 +1,5 @@
 import os
+import base64
 import re
 import urllib.parse
 import tempfile
@@ -51,6 +52,178 @@ def get_ydl_opts(extra_opts=None):
 # Structure: { task_id: { 'status': '...', 'percent': 0, 'speed': '...', 'eta': 0, 'msg': '...', 'filepath': '...', 'filename': '...', 'created_at': 0 } }
 DOWNLOAD_TASKS = {}
 tasks_lock = threading.Lock()
+
+# List of public stable Invidious instances to fetch YouTube metadata when yt-dlp is blocked
+INVIDIOUS_INSTANCES = [
+    'https://invidious.projectsegfau.lt',
+    'https://yewtu.be',
+    'https://inv.tux.im',
+    'https://invidious.nerdvpn.de',
+    'https://invidious.jing.rocks'
+]
+
+# Helper to extract 11-character YouTube video ID
+def extract_youtube_id(url):
+    pattern = r'(?:https?://)?(?:www\.)?(?:youtube\.com/(?:watch\?v=|embed/|v/|shorts/)|youtu\.be/)([a-zA-Z0-9_-]{11})'
+    match = re.search(pattern, url)
+    return match.group(1) if match else None
+
+# Fallback function to extract YouTube metadata via public Invidious API
+def fetch_youtube_via_invidious(url):
+    video_id = extract_youtube_id(url)
+    if not video_id:
+        return None, None
+        
+    for instance in INVIDIOUS_INSTANCES:
+        try:
+            api_url = f"{instance}/api/v1/videos/{video_id}"
+            response = requests.get(api_url, timeout=6)
+            if response.status_code == 200:
+                data = response.json()
+                if data and 'title' in data:
+                    return data, instance
+        except Exception:
+            continue
+    return None, None
+
+# Mapper to translate Invidious JSON payload to TubeFlow Ultimate UI schema
+def parse_invidious_info(data, url):
+    title = data.get('title', 'Unknown Video')
+    author = data.get('author', 'Unknown Creator')
+    
+    thumbnail = ""
+    thumbnails = data.get('videoThumbnails', [])
+    if thumbnails:
+        thumbnails.sort(key=lambda x: x.get('width', 0), reverse=True)
+        thumbnail = thumbnails[0].get('url', '')
+        
+    duration = data.get('lengthSeconds', 0)
+    views = data.get('viewCount', 0)
+    description = data.get('description', '')[:300] + '...'
+    
+    video_formats = []
+    audio_formats = []
+    
+    # 1. formatStreams (Combined video + audio)
+    for f in data.get('formatStreams', []):
+        ext = f.get('container', 'mp4')
+        quality = f.get('qualityLabel', '360p')
+        payload = f"{f.get('url')}|{title}|{ext}"
+        encoded_id = base64.b64encode(payload.encode('utf-8')).decode('utf-8')
+        
+        video_formats.append({
+            'format_id': encoded_id,
+            'ext': ext,
+            'resolution': f.get('resolution', ''),
+            'quality_label': quality,
+            'filesize': int(f.get('size', 0)) or 0,
+            'type': 'combined',
+            'note': f"Direct Stream ({ext.upper()})"
+        })
+        
+    # 2. adaptiveFormats (separate video-only and audio-only)
+    for f in data.get('adaptiveFormats', []):
+        mime = f.get('type', '')
+        ext = f.get('container', 'mp4')
+        
+        payload = f"{f.get('url')}|{title}|{ext}"
+        encoded_id = base64.b64encode(payload.encode('utf-8')).decode('utf-8')
+        
+        if 'audio/' in mime:
+            quality = f.get('audioQuality', 'High Quality')
+            bitrate = int(f.get('bitrate', 0)) // 1000
+            audio_formats.append({
+                'format_id': encoded_id,
+                'ext': ext,
+                'quality_label': f"{bitrate}kbps" if bitrate else quality,
+                'filesize': int(f.get('size', 0)) or 0,
+                'type': 'audio',
+                'note': f"Audio only ({ext.upper()})"
+            })
+        elif 'video/' in mime:
+            quality = f.get('qualityLabel', '360p')
+            video_formats.append({
+                'format_id': encoded_id,
+                'ext': ext,
+                'resolution': f.get('resolution', ''),
+                'quality_label': quality,
+                'filesize': int(f.get('size', 0)) or 0,
+                'type': 'combined',
+                'note': "Direct Video"
+            })
+            
+    # Sort video formats
+    def get_height(x):
+        label = x['quality_label']
+        m = re.search(r'(\d+)', label)
+        return int(m.group(1)) if m else 0
+    video_formats.sort(key=get_height, reverse=True)
+    
+    return {
+        'title': title,
+        'author': author,
+        'thumbnail': thumbnail,
+        'duration': duration,
+        'duration_formatted': format_duration(duration),
+        'views': views,
+        'views_formatted': format_views(views),
+        'description': description,
+        'video_formats': video_formats,
+        'audio_formats': audio_formats,
+        'url': url
+    }
+
+# Background worker for direct CDN stream downloads via requests (100% bypasses yt-dlp blocks!)
+def direct_stream_download_worker(direct_url, task_id, title, ext):
+    try:
+        temp_dir = tempfile.gettempdir()
+        final_filepath = os.path.join(temp_dir, f"tubeflow_{task_id}.{ext}")
+        
+        response = requests.get(direct_url, stream=True, timeout=120)
+        response.raise_for_status()
+        
+        total_size = int(response.headers.get('content-length', 0))
+        downloaded = 0
+        
+        with open(final_filepath, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=1024 * 1024): # 1MB chunks
+                if chunk:
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    percent = 0
+                    if total_size > 0:
+                        percent = round((downloaded / total_size) * 100, 1)
+                    
+                    with tasks_lock:
+                        if task_id in DOWNLOAD_TASKS:
+                            DOWNLOAD_TASKS[task_id].update({
+                                'status': 'downloading',
+                                'percent': percent,
+                                'speed': 'High Speed',
+                                'eta': 'calculating...',
+                                'msg': f"Downloading direct CDN stream: {percent}% completed"
+                            })
+                            
+        safe_title = sanitize_filename(title)
+        filename = f"{safe_title}.{ext}"
+        
+        with tasks_lock:
+            if task_id in DOWNLOAD_TASKS:
+                DOWNLOAD_TASKS[task_id].update({
+                    'status': 'completed',
+                    'percent': 100,
+                    'filepath': final_filepath,
+                    'filename': filename,
+                    'msg': "Download complete! Ready to save."
+                })
+    except Exception as e:
+        print(f"TubeFlow Direct Downloader Error: {str(e)}")
+        with tasks_lock:
+            if task_id in DOWNLOAD_TASKS:
+                DOWNLOAD_TASKS[task_id].update({
+                    'status': 'error',
+                    'msg': f"Download failed: {str(e)}"
+                })
 
 # Helper to format duration
 def format_duration(seconds):
@@ -139,7 +312,15 @@ def get_info():
                 info = ydl.extract_info(url, download=False)
             
         if not info:
-            return jsonify({'error': 'Could not extract video information'}), 400
+            # Fallback to Invidious API to bypass the datacenter IP bot block!
+            print("TubeFlow: yt-dlp blocked. Triggering Invidious API fallback...")
+            invidious_data, instance = fetch_youtube_via_invidious(url)
+            if invidious_data:
+                print(f"TubeFlow: Successfully extracted details via Invidious instance: {instance}")
+                parsed_res = parse_invidious_info(invidious_data, url)
+                return jsonify(parsed_res)
+            else:
+                return jsonify({'error': 'Could not extract video information. YouTube is actively blocking this server IP. Please try again in a few minutes.'}), 400
             
         # Select best high-res thumbnail
         thumbnail = info.get('thumbnail')
@@ -452,6 +633,45 @@ def start_async_download():
     
     if not url or not format_id:
         return jsonify({'error': 'URL and format_id are required'}), 400
+        
+    # Check if format_id is a base64 encoded direct stream payload
+    is_direct = False
+    direct_url = ""
+    title = "video"
+    ext = "mp4"
+    
+    try:
+        decoded = base64.b64decode(format_id.encode('utf-8')).decode('utf-8')
+        if '|' in decoded and (decoded.startswith('http://') or decoded.startswith('https://')):
+            parts = decoded.split('|')
+            direct_url = parts[0]
+            title = parts[1]
+            ext = parts[2]
+            is_direct = True
+    except Exception:
+        pass
+        
+    if is_direct:
+        task_id = str(uuid.uuid4())
+        with tasks_lock:
+            DOWNLOAD_TASKS[task_id] = {
+                'status': 'starting',
+                'percent': 0,
+                'speed': '0 KB/s',
+                'eta': 'calculating...',
+                'msg': 'Initializing direct CDN downloader thread...',
+                'filepath': '',
+                'filename': '',
+                'created_at': time.time()
+            }
+            
+        thread = threading.Thread(
+            target=direct_stream_download_worker,
+            args=(direct_url, task_id, title, ext),
+            daemon=True
+        )
+        thread.start()
+        return jsonify({'task_id': task_id, 'title': title})
         
     try:
         info = None
