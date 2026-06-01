@@ -752,10 +752,28 @@ async function getCobaltMergedLink(videoUrl, qualityLabel, isAudio = false) {
         'https://api.kuko.rip'
     ];
     
-    // We send a clean minimalistic payload to be 100% compatible with both Cobalt v6 and v7!
+    // We send a clean payload compatible with both Cobalt v6 and v7!
     const payload = {
-        url: videoUrl
+        url: videoUrl,
+        isAudioOnly: isAudio,
+        downloadMode: isAudio ? 'audio' : 'video'
     };
+    
+    if (!isAudio) {
+        let q = '720';
+        const qLower = (qualityLabel || '').toLowerCase();
+        if (qLower.includes('2160') || qLower.includes('4k')) q = '2160';
+        else if (qLower.includes('1440') || qLower.includes('2k')) q = '1440';
+        else if (qLower.includes('1080')) q = '1080';
+        else if (qLower.includes('720')) q = '720';
+        else if (qLower.includes('480')) q = '480';
+        else if (qLower.includes('360')) q = '360';
+        
+        payload.vQuality = q;
+        payload.videoQuality = q;
+    } else {
+        payload.audioFormat = 'mp3';
+    }
     
     for (let instance of instances) {
         for (let path of ["/api/json", ""]) {
@@ -783,22 +801,15 @@ async function getCobaltMergedLink(videoUrl, qualityLabel, isAudio = false) {
     throw new Error("SaaS merge servers are currently busy. Please try a standard 'Direct' resolution.");
 }
 
-// Trigger Asynchronous progress-monitored download
+// Trigger Asynchronous progress-monitored download (100% Serverless, Client-Side!)
 async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     if (!currentVideo) return;
-    
-    // Clear any existing active download intervals
-    if (activeDownloadInterval) {
-        clearInterval(activeDownloadInterval);
-        activeDownloadInterval = null;
-    }
     
     const url = currentVideo.url;
     const title = currentVideo.title;
     const downloadFilename = `${title.replace(/[\\/*?:"<>|]/g, '')}_${qualityLabel}.${ext}`;
     
-    const isCombined = formatType === 'combined' || qualityLabel === 'Audio';
-    const isMerge = formatType === 'merge';
+    const isAudio = formatType === 'audio' || qualityLabel === 'Audio';
     
     // Set Loading state
     showStatus('Processing download... Please wait.', 'loading');
@@ -820,9 +831,38 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     // Lock buttons
     toggleDownloadButtons(false);
     
-    // 1. Direct Browser-Side Download for combined formats (With Sound natively, in Same Tab!)
-    if (isCombined) {
-        progressStatus.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin font-accent"></i> Streaming file bytes directly in same tab...`;
+    // 1. Try Cobalt first (100% serverless, fast, direct same-tab download)
+    progressStatus.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> Bypassing blocks and establishing high-speed download stream...`;
+    try {
+        const cobaltData = await getCobaltMergedLink(url, qualityLabel, isAudio);
+        const downloadUrl = cobaltData.url;
+        
+        progressFill.style.width = '100%';
+        progressFill.classList.remove('pulsing-fill');
+        progressPercent.textContent = '100%';
+        progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> High-speed download stream ready! Starting...</span>`;
+        
+        // Trigger native download in the same tab
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = downloadFilename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        showStatus('Download started successfully!', 'success');
+        toggleDownloadButtons(true);
+        
+        setTimeout(() => {
+            progressSection.classList.add('hidden');
+        }, 5000);
+        return;
+        
+    } catch (cobaltErr) {
+        console.warn("High-speed Cobalt download failed, trying browser-side fallback...", cobaltErr);
+        
+        // 2. Fallback to direct download via CORS Proxy
+        progressStatus.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin font-accent"></i> Cobalt busy. Trying browser-side proxy download...`;
         try {
             const decoded = atob(formatId);
             if (decoded.includes('|')) {
@@ -859,72 +899,43 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
                     progressSection.classList.add('hidden');
                 }, 5000);
                 return;
+            } else {
+                throw new Error("Invalid format ID");
             }
-        } catch (err) {
-            console.warn("Client-side direct download failed, trying high-speed Cobalt client bypass...", err);
+        } catch (proxyErr) {
+            console.warn("CORS proxy download failed, trying final alternative direct download...", proxyErr);
+            
+            // 3. Last resort fallback: open direct stream link (might open in new tab if blocked by CORS)
             try {
-                progressStatus.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> Redirecting to high-speed client bypass node...`;
-                const cobaltData = await getCobaltMergedLink(url, qualityLabel);
-                const mergedUrl = cobaltData.url;
-                
-                const link = document.createElement('a');
-                link.href = mergedUrl;
-                link.download = downloadFilename;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                
-                progressFill.style.width = '100%';
-                progressFill.classList.remove('pulsing-fill');
-                progressPercent.textContent = '100%';
-                progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Redirected successfully! Download starting at full speed.</span>`;
-                showStatus('Download started successfully!', 'success');
-                toggleDownloadButtons(true);
-                
-                setTimeout(() => {
-                    progressSection.classList.add('hidden');
-                }, 5000);
-                return;
-            } catch (cobaltErr) {
-                console.warn("Client-side Cobalt bypass failed, falling back to secure server-side download:", cobaltErr);
-                startServerSideDownload(formatId, ext, qualityLabel, false, downloadFilename);
-                return;
-            }
-        }
-    }
-    
-    // 2. High-Resolution Video + Audio Merge (Bypasses server block entirely via Client-Side Cobalt Merger!)
-    if (isMerge) {
-        progressStatus.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> Merging high-definition video+audio tracks (100% bypass)...`;
-        try {
-            // Fetch pre-merged stream URL from Cobalt's dynamic API
-            const cobaltData = await getCobaltMergedLink(url, qualityLabel);
-            const mergedUrl = cobaltData.url;
+                const decoded = atob(formatId);
+                if (decoded.includes('|')) {
+                    const directUrl = decoded.split('|')[0];
+                    
+                    const link = document.createElement('a');
+                    link.href = directUrl;
+                    link.download = downloadFilename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    progressFill.style.width = '100%';
+                    progressFill.classList.remove('pulsing-fill');
+                    progressPercent.textContent = '100%';
+                    progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Download triggered! (Alternative stream)</span>`;
+                    showStatus('Download triggered!', 'success');
+                    toggleDownloadButtons(true);
+                    
+                    setTimeout(() => {
+                        progressSection.classList.add('hidden');
+                    }, 5000);
+                    return;
+                }
+            } catch (_) {}
             
-            progressFill.style.width = '100%';
-            progressFill.classList.remove('pulsing-fill');
-            progressPercent.textContent = '100%';
-            progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> HD Bypass connection established! Starting download...</span>`;
-            
-            // Directly click to trigger direct native same-tab download from Cobalt's unblocked servers at maximum speed!
-            const link = document.createElement('a');
-            link.href = mergedUrl;
-            link.download = downloadFilename;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            showStatus('High-Definition download completed successfully!', 'success');
+            // If all failed
+            progressPercent.textContent = 'Failed';
+            progressStatus.innerHTML = `<span style="color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Download failed. Please try a different resolution or format.</span>`;
             toggleDownloadButtons(true);
-            
-            setTimeout(() => {
-                progressSection.classList.add('hidden');
-            }, 5000);
-            return;
-        } catch (err) {
-            console.warn("Client-side HD merge failed, falling back to secure server-side download & merge:", err);
-            startServerSideDownload(formatId, ext, qualityLabel, true, downloadFilename);
-            return;
         }
     }
 }
