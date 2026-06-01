@@ -30,14 +30,16 @@ app = Flask(__name__, template_folder='templates', static_folder='static')
 
 # Programmatically start the bgutil-pot PO Token provider server in the background
 try:
+    log_file = open("bgutil.log", "a")
     subprocess.Popen(
         ["bgutil-pot", "server", "--host", "127.0.0.1", "--port", "4416"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
+        stdout=log_file,
+        stderr=log_file
     )
     print("TubeFlow: bgutil-pot PO Token server successfully started on 127.0.0.1:4416!")
 except Exception as e:
     print("TubeFlow Warning: bgutil-pot server could not be started:", str(e))
+
 
 
 # Helper to generate yt-dlp options with browser impersonation and alternative player clients to bypass cloud blocking / SSL EOF / bot checks
@@ -428,6 +430,19 @@ def cleanup_old_tasks():
 cleanup_thread = threading.Thread(target=cleanup_old_tasks, daemon=True)
 cleanup_thread.start()
 
+@app.route('/api/debug-logs')
+def get_debug_logs():
+    try:
+        logs = ""
+        if os.path.exists('bgutil.log'):
+            with open('bgutil.log', 'r') as f:
+                logs = f.read()
+        else:
+            logs = "bgutil.log file not found."
+        return Response(logs, mimetype='text/plain')
+    except Exception as e:
+        return str(e), 500
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -445,7 +460,13 @@ def get_info():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
         except Exception as e:
-            print(f"TubeFlow: Impersonation extraction failed ({str(e)}). Retrying with standard options...")
+            error_msg = f"TubeFlow: Impersonation extraction failed ({str(e)}). Retrying with standard options..."
+            print(error_msg)
+            try:
+                with open("bgutil.log", "a") as log_file:
+                    log_file.write(f"\n{error_msg}\n")
+            except Exception:
+                pass
             try:
                 fallback_opts = {
                     'quiet': True,
@@ -464,7 +485,13 @@ def get_info():
                 with yt_dlp.YoutubeDL(fallback_opts) as ydl:
                     info = ydl.extract_info(url, download=False)
             except Exception as e2:
-                print(f"TubeFlow: Standard fallback extraction failed ({str(e2)}).")
+                error_msg2 = f"TubeFlow: Standard fallback extraction failed ({str(e2)})."
+                print(error_msg2)
+                try:
+                    with open("bgutil.log", "a") as log_file:
+                        log_file.write(f"\n{error_msg2}\n")
+                except Exception:
+                    pass
             
         if not info:
             # Fallback to Invidious & Piped APIs to bypass the datacenter IP bot block!
