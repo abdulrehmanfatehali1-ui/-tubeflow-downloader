@@ -3,60 +3,74 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TempMail Pro - Live Email Server Client</title>
-  <!-- Google Fonts Outfit & Inter -->
+  <title>CYBER-MAIL // Neon Temporary Mail Terminal</title>
+  <!-- Google Fonts Orbitron & Outfit -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Outfit:wght@300;400;500;600;700;800&family=Fira+Code:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- Custom Styles -->
   <link rel="stylesheet" href="/tempmail/style.css">
 </head>
 <body>
-  <!-- Background Decorative Glowing Blobs -->
-  <div class="glow-orb orb-1"></div>
-  <div class="glow-orb orb-2"></div>
-  <div class="glow-orb orb-3"></div>
+  <!-- Cyberpunk Matrix/Grid overlay background -->
+  <div class="cyber-grid"></div>
+
+  <!-- Background Decorative Neon Glowing Blobs -->
+  <div class="glow-orb orb-purple"></div>
+  <div class="glow-orb orb-cyan"></div>
+  <div class="glow-orb orb-pink"></div>
 
   <div class="app-container">
     <!-- TOP NAVIGATION BAR -->
     <header class="app-header">
       <div class="header-logo">
         <div class="logo-icon">
-          <i data-lucide="mail"></i>
+          <i data-lucide="terminal"></i>
           <span class="pulse-ring"></span>
         </div>
         <div class="logo-text">
-          <h1>TempMail <span>Pro</span></h1>
-          <p class="server-badge">
-            <span class="status-dot online"></span> Mail.tm Live Engine
-          </p>
+          <h1>CYBER-MAIL <span>// TEMP NODES</span></h1>
+          <div class="server-badge">
+            <span class="status-dot online"></span> SYSTEM: ONLINE // CORS PROXY ENFORCED
+          </div>
         </div>
       </div>
 
       <div class="active-address-container" id="activeAddressWidget" style="display: none;">
-        <span class="address-label">Active Inbox:</span>
+        <span class="address-label">TERMINAL ACTIVE ADDRESS:</span>
         <div class="address-pill">
-          <span class="address-text" id="activeEmailText">loading@mail.tm</span>
-          <button class="icon-btn tooltip" id="copyEmailBtn" data-tooltip="Copy Email">
+          <span class="address-text" id="activeEmailText">loading@1secmail.com</span>
+          <button class="icon-btn tooltip" id="copyEmailBtn" data-tooltip="Copy Node Address">
             <i data-lucide="copy"></i>
           </button>
         </div>
       </div>
 
       <div class="header-actions">
-        <button class="btn btn-secondary tooltip" id="openHistoryBtn" data-tooltip="Manage Accounts">
-          <i data-lucide="users"></i>
-          <span>Accounts</span>
+        <button class="btn btn-secondary tooltip" id="openHistoryBtn" data-tooltip="Node Manager">
+          <i data-lucide="cpu"></i>
+          <span>Nodes</span>
           <span class="badge" id="accountCountBadge">0</span>
         </button>
         <button class="btn btn-primary" id="openMailerBtn">
-          <i data-lucide="send"></i>
-          <span>Mock Mailer</span>
+          <i data-lucide="terminal"></i>
+          <span>Inject Mail</span>
         </button>
       </div>
     </header>
+
+    <!-- LIVE CONSOLE STATUS PANEL (Premium Cyberpunk addition!) -->
+    <section class="console-log-bar">
+      <div class="log-indicator">
+        <span class="log-dot"></span>
+        <span class="log-title">LOGS:</span>
+      </div>
+      <div class="log-scroll-area">
+        <span class="log-line" id="consoleLogText">> ESTABLISHING CONTACT WITH ENCRYPTED MAIL NODE... COMPLETED.</span>
+      </div>
+    </section>
 
     <!-- MAIN APP GRID LAYOUT -->
     <main class="app-main-grid">
@@ -65,23 +79,23 @@
       <section class="panel inbox-panel">
         <div class="panel-header">
           <div class="panel-title-area">
-            <h2>Inbox</h2>
+            <h2>INCOMING STREAM</h2>
             <div class="polling-status">
               <span class="polling-dot"></span>
-              <span class="polling-label">Live checking</span>
+              <span class="polling-label">POLLING NODES</span>
             </div>
           </div>
-          <button class="icon-btn" id="refreshBtn" title="Refresh Inbox">
-            <i data-lucide="rotate-cw"></i>
+          <button class="icon-btn" id="refreshBtn" title="Force Stream Update">
+            <i data-lucide="refresh-cw"></i>
           </button>
         </div>
 
         <div class="inbox-list" id="inboxList">
           <!-- Dynamically populated or showing empty state -->
           <div class="empty-state">
-            <div class="empty-icon"><i data-lucide="inbox"></i></div>
-            <h3>Your Inbox is Empty</h3>
-            <p>Real emails sent to your temporary address will appear here in real-time.</p>
+            <div class="empty-icon"><i data-lucide="shield-alert"></i></div>
+            <h3>INBOX VOID</h3>
+            <p class="monospace-hint">> WAITING FOR INCOMING DATA TRANSMISSIONS ON PORT 443...</p>
           </div>
         </div>
       </section>
@@ -92,27 +106,27 @@
           
           <!-- Empty Viewport State -->
           <div class="empty-state select-mail-state">
-            <div class="empty-icon"><i data-lucide="mail-open"></i></div>
-            <h3>No Message Selected</h3>
-            <p>Select an email from the inbox list to read its content and extract verification codes.</p>
+            <div class="empty-icon"><i data-lucide="eye-off"></i></div>
+            <h3>TERMINAL STANDBY</h3>
+            <p class="monospace-hint">> SELECT AN INCOMING LOG ITEM TO INITIALIZE PARSING DECRYPTOR...</p>
           </div>
 
           <!-- Message Active View (Hidden initially) -->
           <div class="message-viewer" id="messageViewer" style="display: none;">
             
-            <!-- Dynamic OTP Auto-Extractor Banner (Saves time!) -->
+            <!-- Dynamic OTP Auto-Extractor Banner (Futuristic Cyberpunk style) -->
             <div class="otp-alert-card" id="otpBanner" style="display: none;">
               <div class="otp-badge-glow">
-                <i data-lucide="shield-check"></i>
+                <i data-lucide="key-round"></i>
               </div>
               <div class="otp-banner-details">
-                <h4>OTP Code Detected!</h4>
-                <p>We extracted this verification code from the email body.</p>
+                <h4>// OTP DETECTED // EXTRACTION COMPLETE</h4>
+                <p>Secured authentication credentials extracted successfully from the packet stream.</p>
               </div>
               <div class="otp-copy-widget">
                 <span class="otp-code-value" id="otpValue">000000</span>
                 <button class="btn btn-otp-copy" id="otpCopyBtn">
-                  <i data-lucide="copy"></i> Copy OTP
+                  <i data-lucide="zap"></i> COPY CRED
                 </button>
               </div>
             </div>
@@ -120,14 +134,14 @@
             <!-- Email Headers Card -->
             <div class="message-meta-card">
               <div class="meta-main-info">
-                <h3 class="message-subject" id="viewSubject">Verification Code Subject</h3>
-                <span class="message-timestamp" id="viewDate">Today, 10:24 AM</span>
+                <h3 class="message-subject" id="viewSubject">PACKET SUBJECT DECRYPTED</h3>
+                <span class="message-timestamp" id="viewDate">TIMESTAMP // 00:00:00</span>
               </div>
               <div class="sender-profile">
-                <div class="sender-avatar" id="senderAvatar">S</div>
+                <div class="sender-avatar" id="senderAvatar">></div>
                 <div class="sender-details">
-                  <div class="sender-name" id="viewSenderName">Google Accounts</div>
-                  <div class="sender-address" id="viewSenderAddress">no-reply@google.com</div>
+                  <div class="sender-name" id="viewSenderName">TRANSMITTER HOSTNAME</div>
+                  <div class="sender-address" id="viewSenderAddress">transmitter@domain.com</div>
                 </div>
               </div>
             </div>
@@ -135,10 +149,10 @@
             <!-- View Tabs (HTML / Text) -->
             <div class="viewer-tabs">
               <button class="tab-btn active" data-tab="rich">
-                <i data-lucide="file-text"></i> Rich HTML View
+                <i data-lucide="view"></i> VIEW HTML PACKET
               </button>
               <button class="tab-btn" data-tab="plain">
-                <i data-lucide="code"></i> Plain Text
+                <i data-lucide="binary"></i> DECRYPT PLAIN CODE
               </button>
             </div>
 
@@ -146,7 +160,7 @@
             <div class="message-body-container">
               <!-- Rich view renders inside an iframe for secure, isolated CSS rendering -->
               <div class="body-tab-pane active" id="paneRich">
-                <iframe id="htmlFrame" sandbox="allow-same-origin allow-popups" title="HTML Email Content"></iframe>
+                <iframe id="htmlFrame" sandbox="allow-same-origin allow-popups" title="MIME Package Body"></iframe>
               </div>
               <div class="body-tab-pane" id="panePlain">
                 <pre id="textFrame" class="plain-text-box"></pre>
@@ -161,11 +175,11 @@
     </main>
   </div>
 
-  <!-- SLIDE-OVER DRAWER 1: ACCOUNTS & CREATION -->
+  <!-- SLIDE-OVER DRAWER 1: MAIL NODE MANAGER -->
   <div class="drawer-overlay" id="historyOverlay"></div>
   <aside class="drawer" id="historyDrawer">
     <div class="drawer-header">
-      <h2>Manage Accounts</h2>
+      <h2>NODE MANAGER</h2>
       <button class="icon-btn close-drawer-btn" id="closeHistoryBtn">
         <i data-lucide="x"></i>
       </button>
@@ -174,36 +188,39 @@
       
       <!-- Account Generator Form -->
       <div class="generator-box">
-        <h3>Create New Temporary Email</h3>
+        <h3>INITIALIZE NEW LOGICAL ADDRESS</h3>
         
         <div class="form-group">
-          <label>Username Prefix</label>
+          <label>NODE PREFIX</label>
           <div class="username-input-wrapper">
-            <input type="text" id="customPrefixInput" placeholder="e.g. jhon.doe (Optional)">
+            <input type="text" id="customPrefixInput" placeholder="e.g. cyber.agent (Optional)">
             <button class="icon-btn tooltip" id="randomizePrefixBtn" data-tooltip="Randomize Prefix">
               <i data-lucide="shuffle"></i>
             </button>
           </div>
-          <p class="form-hint">Leave blank to generate a completely random address.</p>
+          <p class="form-hint">Leave blank to randomize prefix generation.</p>
         </div>
 
         <div class="form-group">
-          <label>Domain</label>
+          <label>ROUTING NODE DOMAIN</label>
           <select id="domainSelect" class="form-select">
-            <!-- Dynamically loaded domains -->
+            <!-- 1secmail domains -->
+            <option value="1secmail.com">1secmail.com</option>
+            <option value="1secmail.org">1secmail.org</option>
+            <option value="1secmail.net">1secmail.net</option>
           </select>
         </div>
 
         <button class="btn btn-primary btn-block" id="generateEmailBtn">
-          <i data-lucide="plus-circle"></i> Create Email
+          <i data-lucide="plus-square"></i> SPAWN MAIL NODE
         </button>
       </div>
 
       <!-- Account History List -->
       <div class="history-section">
         <div class="section-title">
-          <h3>Your Addresses</h3>
-          <span class="active-count" id="historyCount">0 Active</span>
+          <h3>ACTIVE REGISTERED NODES</h3>
+          <span class="active-count" id="historyCount">0 NODES</span>
         </div>
         <div class="account-list" id="accountHistoryList">
           <!-- Dynamically populated addresses -->
@@ -217,60 +234,60 @@
   <div class="drawer-overlay" id="mailerOverlay"></div>
   <aside class="drawer" id="mailerDrawer">
     <div class="drawer-header">
-      <h2>SMTP Mock Mailer</h2>
+      <h2>PACKET INJECTOR</h2>
       <button class="icon-btn close-drawer-btn" id="closeMailerBtn">
         <i data-lucide="x"></i>
       </button>
     </div>
     <div class="drawer-content">
       <div class="mailer-intro">
-        <p>Use this built-in SMTP mailer to simulate and inject emails locally for instant verification, or send a real email to your generated address from your Gmail/Outlook!</p>
+        <p>Use the local simulator console to inject custom verification OTP emails into the stream instantly for validation checks.</p>
       </div>
 
       <div class="preset-triggers">
-        <label>Quick Fill OTP Presets</label>
+        <label>QUICK FILL VERIFICATION LOG TEMPLATE</label>
         <div class="preset-buttons">
           <button class="btn btn-preset" id="presetGoogle">
-            <span class="preset-icon google">G</span> Google Login
+            <span class="preset-icon google">G</span> Google Auth
           </button>
           <button class="btn btn-preset" id="presetGithub">
-            <i data-lucide="github"></i> GitHub Auth
+            <i data-lucide="github"></i> GitHub Code
           </button>
           <button class="btn btn-preset" id="presetNetflix">
-            <span class="preset-icon netflix">N</span> Netflix Code
+            <span class="preset-icon netflix">N</span> Netflix OTP
           </button>
         </div>
       </div>
 
       <form id="mockMailerForm">
         <div class="form-group">
-          <label for="mockFrom">Sender Email (From)</label>
-          <input type="email" id="mockFrom" required placeholder="e.g. verify@google.com">
+          <label for="mockFrom">PACKET SOURCE (From)</label>
+          <input type="email" id="mockFrom" required placeholder="verify@accounts.google.com">
         </div>
 
         <div class="form-group">
-          <label for="mockSenderName">Sender Display Name</label>
+          <label for="mockSenderName">TRANSMITTER SIGNATURE</label>
           <input type="text" id="mockSenderName" placeholder="e.g. Google Accounts (Optional)">
         </div>
 
         <div class="form-group">
-          <label for="mockTo">Recipient (To)</label>
+          <label for="mockTo">TARGET NODE (To)</label>
           <input type="email" id="mockTo" required readonly class="readonly-input">
-          <p class="form-hint">Automatically locked to your active inbox address.</p>
+          <p class="form-hint">Locked to active logic node address.</p>
         </div>
 
         <div class="form-group">
-          <label for="mockSubject">Subject</label>
-          <input type="text" id="mockSubject" required placeholder="e.g. 192842 is your Google verification code">
+          <label for="mockSubject">HEADER SUBJECT</label>
+          <input type="text" id="mockSubject" required placeholder="e.g. 192842 is your security code">
         </div>
 
         <div class="form-group">
-          <label for="mockBody">Message Content (HTML & Text supported)</label>
-          <textarea id="mockBody" required rows="8" placeholder="Type your message body here... Make sure to include an OTP number to test the auto-extractor!"></textarea>
+          <label for="mockBody">PACKET CONTENT BODY</label>
+          <textarea id="mockBody" required rows="8" placeholder="Type your simulation body here... Ensure an OTP code is included!"></textarea>
         </div>
 
         <button type="submit" class="btn btn-primary btn-block" id="sendMockBtn">
-          <i data-lucide="send"></i> Inject Simulated Email
+          <i data-lucide="send"></i> INJECT PACKET TO LOGS
         </button>
       </form>
     </div>

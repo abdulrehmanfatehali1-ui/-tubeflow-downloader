@@ -1,17 +1,39 @@
 // ==========================================
 // STATE MANAGEMENT & CONSTANTS
 // ==========================================
-const API_BASE = 'https://api.mail.tm';
+const API_BASE = '/api/mail';
 
 const state = {
-  accounts: [],        // Array of { address, password, token, createdAt }
+  accounts: [],        // Array of { address, username, domain, createdAt }
   activeAccount: null, // Current active account object
   messages: [],        // Messages list for the active account
   selectedMessage: null,
-  domains: ['mail.tm'],
+  domains: ['1secmail.com', '1secmail.org', '1secmail.net'],
   pollingInterval: null,
   isPolling: false
 };
+
+// ==========================================
+// CYBERPUNK CONSOLE LOGGER (FUTURISTIC LOGS!)
+// ==========================================
+function writeConsoleLog(text) {
+  const consoleEl = document.getElementById('consoleLogText');
+  if (!consoleEl) return;
+
+  // Simulate cyberpunk console typing effect
+  let i = 0;
+  consoleEl.textContent = '';
+  
+  function typeChar() {
+    if (i < text.length) {
+      consoleEl.textContent += text.charAt(i);
+      i++;
+      setTimeout(typeChar, 18);
+    }
+  }
+  
+  typeChar();
+}
 
 // ==========================================
 // AUDIO SYNTH NOTIFICATION CHIME
@@ -30,17 +52,17 @@ function playNotificationChime() {
     
     const now = ctx.currentTime;
     
-    // Futuristic glass chime synth: Double-chime in high scale
+    // Futuristic high-tech glass chime: Double-chime in high scale
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(659.25, now);     // E5
-    osc.frequency.setValueAtTime(987.77, now + 0.1); // B5
+    osc.frequency.setValueAtTime(783.99, now);     // G5
+    osc.frequency.setValueAtTime(1046.50, now + 0.08); // C6
     
     gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.15, now + 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
+    gain.gain.linearRampToValueAtTime(0.12, now + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.4);
     
     osc.start(now);
-    osc.stop(now + 0.5);
+    osc.stop(now + 0.45);
   } catch (err) {
     console.warn('[Audio] Synth play blocked or unsupported:', err);
   }
@@ -86,9 +108,6 @@ function scanForOTP(message) {
 
   // Extract from Subject or Text Body
   const contentToScan = `${message.subject} \n ${message.text}`;
-  
-  // Regex combinations:
-  // Matches standard 4-8 digit codes surrounded by word boundaries
   const otpRegex = /\b(\d{4,8})\b/g;
   
   // Validation keywords indicating code transmission
@@ -110,10 +129,12 @@ function scanForOTP(message) {
   }
 
   if (matches.length > 0) {
-    // Show the first candidate found
     const detectedCode = matches[0];
     otpValue.textContent = detectedCode;
     otpBanner.style.display = 'flex';
+    
+    // Write console log alert
+    writeConsoleLog(`> WARNING: UNCRYPTED CREDENTIAL IDENTIFIED // ACCESS_KEY: ${detectedCode} // READY TO EXPORT.`);
     
     // Auto-update copy trigger
     const copyBtn = document.getElementById('otpCopyBtn');
@@ -126,10 +147,10 @@ function scanForOTP(message) {
 }
 
 // ==========================================
-// API REST ACTIONS (MAIL.TM CLIENT INTERFACE)
+// API REST ACTIONS (STATELESS 1SECMAIL PROXY CLIENT)
 // ==========================================
 
-// Helper: Safely parse JSON responses to prevent HTML error/rate-limit pages from throwing crashes
+// Safe JSON parser helper
 async function safeParseJSON(response) {
   try {
     const text = await response.text();
@@ -140,141 +161,90 @@ async function safeParseJSON(response) {
   }
 }
 
-// Fetch config domains from Mail.tm
-async function fetchConfig() {
-  try {
-    const res = await fetch(`${API_BASE}/domains`);
-    if (res.ok) {
-      const data = await safeParseJSON(res);
-      const list = data['hydra:member'] || [];
-      // Get all active domains
-      state.domains = list.filter(d => d.isActive).map(d => d.domain);
-      if (state.domains.length === 0) state.domains = ['mail.tm'];
-      
-      // Update Domain Selector options in drawer
-      const domainSelect = document.getElementById('domainSelect');
-      if (domainSelect) {
-        domainSelect.innerHTML = state.domains.map(d => `<option value="${d}">${d}</option>`).join('');
-      }
-    }
-  } catch (err) {
-    console.error('Failed to load Mail.tm domains:', err);
-  }
-}
-
-// Create new Mail.tm account and obtain JWT token
+// Create new 1secmail account (stateless creation)
 async function createAccount(prefix = '', domain = '') {
+  writeConsoleLog(`> INITIALIZING SPAWN STREAM ON NODE-12...`);
+  
   try {
     const selectDomain = domain || state.domains[0];
-    const cleanPrefix = prefix ? prefix.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '') : generateRandomPrefix();
-    const address = `${cleanPrefix}@${selectDomain}`;
-    const password = Math.random().toString(36).substring(2, 12); // secure random pass
+    let address = '';
+    let username = '';
 
-    // 1. Create Account
-    const res = await fetch(`${API_BASE}/accounts`, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({ address, password })
-    });
-
-    if (!res.ok) {
-      const errData = await safeParseJSON(res);
-      throw new Error(errData['hydra:description'] || errData.message || 'Failed to create email');
-    }
-
-    // 1.5. Resilient Auth Pipeline: Wait for propagation & retry if database lags
-    let token = '';
-    let loginAttempts = 4;
-    let delayMs = 1500;
-
-    for (let i = 0; i < loginAttempts; i++) {
-      try {
-        const tokenRes = await fetch(`${API_BASE}/token`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify({ address, password })
-        });
-
-        if (tokenRes.ok) {
-          const tokenData = await safeParseJSON(tokenRes);
-          token = tokenData.token;
-          break; // Authenticated successfully!
-        }
-        
-        // If it's the last attempt, parse the specific error message and throw
-        if (i === loginAttempts - 1) {
-          let errMsg = 'Failed to authenticate session token';
-          try {
-            const errData = await safeParseJSON(tokenRes);
-            errMsg = errData['hydra:description'] || errData.message || errMsg;
-          } catch (e) {}
-          throw new Error(errMsg);
-        }
-      } catch (err) {
-        if (i === loginAttempts - 1) throw err;
+    if (prefix) {
+      username = prefix.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+      address = `${username}@${selectDomain}`;
+    } else {
+      // Use 1secmail stateless generator proxy
+      const res = await fetch(`${API_BASE}?action=gen`);
+      if (!res.ok) throw new Error('Proxy server failed to generate email addresses');
+      
+      const addresses = await safeParseJSON(res);
+      if (addresses && addresses.length > 0) {
+        address = addresses[0];
+        const parts = address.split('@');
+        username = parts[0];
+        domain = parts[1];
+      } else {
+        username = generateRandomPrefix();
+        address = `${username}@${selectDomain}`;
       }
-
-      // Lags detected - Wait and retry with backoff
-      console.warn(`[Auth] Database sync lag detected. Retrying token in ${delayMs}ms (Attempt ${i + 1}/${loginAttempts})...`);
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-      delayMs += 1000; // Exponential backoff
     }
 
-    const newAcc = { address, password, token, createdAt: new Date().toISOString() };
+    const cleanDomain = domain || selectDomain;
+    const newAcc = { address, username, domain: cleanDomain, createdAt: new Date().toISOString() };
+    
     state.accounts.unshift(newAcc);
     saveAccountsToCache();
     setActiveAccount(newAcc);
     
+    writeConsoleLog(`> NODE ONLINE // ADDRESS: ${address} // STREAM CHANNEL ESTABLISHED.`);
     showToast(`Created email: ${address}`);
     return newAcc;
   } catch (err) {
     showToast(err.message, 'error');
     console.error(err);
+    writeConsoleLog(`> ERROR: NODE SPIN FAIL // LOG: ${err.message}`);
   }
 }
 
-// Fetch messages for active email
+// Fetch messages list
 async function fetchInbox(isBackground = false) {
   if (!state.activeAccount) return;
   
+  if (!isBackground) {
+    writeConsoleLog(`> STREAM SYNC IN PROCESS // CHECKING DATA PACKETS ON ${state.activeAccount.address}...`);
+  }
+
   try {
-    const res = await fetch(`${API_BASE}/messages`, {
-      headers: {
-        'Authorization': `Bearer ${state.activeAccount.token}`,
-        'Accept': 'application/json'
-      }
-    });
+    const res = await fetch(`${API_BASE}?action=getMessages&login=${encodeURIComponent(state.activeAccount.username)}&domain=${encodeURIComponent(state.activeAccount.domain)}`);
 
-    if (!res.ok) throw new Error('Failed to fetch messages');
+    if (!res.ok) throw new Error('Stream sync failed');
 
-    const data = await safeParseJSON(res);
-    const serverMails = data['hydra:member'] || [];
+    const serverMails = await safeParseJSON(res) || [];
     
     // Check if new emails arrived (Trigger chime synth!)
     if (isBackground && serverMails.length > state.messages.length) {
       playNotificationChime();
-      
-      // Calculate how many new mails
       const diff = serverMails.length - state.messages.length;
       showToast(`Received ${diff} new email(s)!`);
+      writeConsoleLog(`> STREAM INGEST // RECEIVED ${diff} NEW DATA PACKET(S).`);
+    } else if (!isBackground) {
+      writeConsoleLog(`> SYNC SUCCESS // ${serverMails.length} INCOMING PACKETS DETECTED.`);
     }
 
     state.messages = serverMails;
     renderInboxList();
   } catch (err) {
     console.error('Polling failed:', err);
+    writeConsoleLog(`> ERROR // POLLING STREAM UNRELIABLE // LINK LOSS.`);
   }
 }
 
 // Fetch single message details
 async function fetchMessageDetails(msgId) {
   if (!state.activeAccount) return;
+
+  writeConsoleLog(`> DECRYPTING PACKET STREAM ID: ${msgId}...`);
 
   // Check if it's a simulated mock email (local only)
   if (msgId.startsWith('mock_')) {
@@ -289,17 +259,23 @@ async function fetchMessageDetails(msgId) {
   }
 
   try {
-    const res = await fetch(`${API_BASE}/messages/${msgId}`, {
-      headers: {
-        'Authorization': `Bearer ${state.activeAccount.token}`,
-        'Accept': 'application/json'
-      }
-    });
+    const res = await fetch(`${API_BASE}?action=readMessage&login=${encodeURIComponent(state.activeAccount.username)}&domain=${encodeURIComponent(state.activeAccount.domain)}&id=${encodeURIComponent(msgId)}`);
 
-    if (!res.ok) throw new Error('Failed to load email details');
+    if (!res.ok) throw new Error('Packet decryption crashed');
 
     const mailData = await safeParseJSON(res);
-    state.selectedMessage = mailData;
+    
+    // Standardize 1secmail layout response structure to match the viewer
+    state.selectedMessage = {
+      id: mailData.id,
+      from: { address: mailData.from, name: parseSenderName(mailData.from) },
+      to: state.activeAccount.address,
+      subject: mailData.subject || '(No Subject)',
+      text: mailData.textBody || '',
+      html: [mailData.htmlBody || mailData.textBody || ''],
+      date: mailData.date,
+      createdAt: mailData.date
+    };
 
     // Update read state in UI
     const localMail = state.messages.find(m => m.id === msgId);
@@ -307,8 +283,10 @@ async function fetchMessageDetails(msgId) {
     renderInboxList();
 
     renderMessageBody();
+    writeConsoleLog(`> DECRYPTION COMPLETE // PACKET PARSED SUCCESSFULLY // HTML ENGINE ENGAGED.`);
   } catch (err) {
     showToast(err.message, 'error');
+    writeConsoleLog(`> DECRYPT ERROR: PACKET CORRUPTED // LOG: ${err.message}`);
   }
 }
 
@@ -316,11 +294,11 @@ async function fetchMessageDetails(msgId) {
 function injectSimulatedEmail(payload) {
   if (!state.activeAccount) return;
 
-  // Create message in Mail.tm structure
+  // Create message in 1secmail structure
   const mockMsg = {
     id: 'mock_' + Math.random().toString(36).substring(2, 11),
     from: { address: payload.fromAddress, name: payload.fromName || 'Sender' },
-    to: [{ address: state.activeAccount.address }],
+    to: state.activeAccount.address,
     subject: payload.subject,
     text: payload.text,
     html: [payload.html || payload.text],
@@ -332,6 +310,7 @@ function injectSimulatedEmail(payload) {
   state.messages.unshift(mockMsg);
   renderInboxList();
   
+  writeConsoleLog(`> INJECT SUCCESS // MOCK PACKET FLOODED ON ${state.activeAccount.address}.`);
   showToast('Simulated email injected locally!');
   closeDrawer('mailer');
 }
@@ -347,9 +326,9 @@ function renderInboxList() {
   if (state.messages.length === 0) {
     container.innerHTML = `
       <div class="empty-state">
-        <div class="empty-icon"><i data-lucide="inbox"></i></div>
-        <h3>Your Inbox is Empty</h3>
-        <p>Real emails sent to your temporary address will appear here in real-time.</p>
+        <div class="empty-icon"><i data-lucide="shield-alert"></i></div>
+        <h3>INBOX VOID</h3>
+        <p class="monospace-hint">> WAITING FOR INCOMING DATA TRANSMISSIONS ON PORT 443...</p>
       </div>
     `;
     lucide.createIcons();
@@ -359,12 +338,12 @@ function renderInboxList() {
   container.innerHTML = state.messages.map(mail => {
     const isSelected = state.selectedMessage && state.selectedMessage.id === mail.id;
     const isUnread = !mail.seen;
-    const dateStr = formatDateTime(mail.createdAt || mail.date);
+    const dateStr = mail.date || formatDateTime(new Date());
 
     return `
       <div class="mail-item ${isSelected ? 'active' : ''} ${isUnread ? 'unread' : ''}" onclick="selectMail('${mail.id}')">
         <div class="mail-item-header">
-          <span class="mail-sender-name">${escapeHTML(mail.from.name || mail.from.address)}</span>
+          <span class="mail-sender-name">${escapeHTML(mail.from.name || mail.from.address || mail.from)}</span>
           <span class="mail-time">${dateStr}</span>
         </div>
         <div class="mail-subject">${escapeHTML(mail.subject)}</div>
@@ -384,8 +363,8 @@ function renderMessageBody() {
 
   // Fill in Header metadata
   document.getElementById('viewSubject').textContent = msg.subject;
-  document.getElementById('viewDate').textContent = formatDateTime(msg.createdAt || msg.date);
-  document.getElementById('viewSenderName').textContent = msg.from.name || 'Sender';
+  document.getElementById('viewDate').textContent = msg.createdAt || msg.date;
+  document.getElementById('viewSenderName').textContent = msg.from.name || 'Transmitter';
   document.getElementById('viewSenderAddress').textContent = `<${msg.from.address}>`;
 
   // Update Avatar Letter
@@ -449,11 +428,11 @@ function renderAccountHistory() {
   const container = document.getElementById('accountHistoryList');
   if (!container) return;
 
-  document.getElementById('historyCount').textContent = `${state.accounts.length} Active`;
+  document.getElementById('historyCount').textContent = `${state.accounts.length} NODES`;
   document.getElementById('accountCountBadge').textContent = state.accounts.length;
 
   if (state.accounts.length === 0) {
-    container.innerHTML = `<p class="form-hint" style="text-align: center; padding: 20px 0;">No active addresses created yet.</p>`;
+    container.innerHTML = `<p class="form-hint" style="text-align: center; padding: 20px 0;">No active nodes created yet.</p>`;
     return;
   }
 
@@ -465,13 +444,13 @@ function renderAccountHistory() {
       <div class="history-card ${isActive ? 'active' : ''}">
         <div class="history-card-info" onclick="switchActiveEmail('${acc.address}')">
           <span class="history-email">${acc.address}</span>
-          <span class="history-date">Created on ${dateStr}</span>
+          <span class="history-date">Spawned on ${dateStr}</span>
         </div>
         <div class="history-actions-row">
-          <button class="icon-btn tooltip" data-tooltip="Copy Address" onclick="copyAddressToClipboard('${acc.address}')">
+          <button class="icon-btn tooltip" data-tooltip="Copy Node Address" onclick="copyAddressToClipboard('${acc.address}')">
             <i data-lucide="copy"></i>
           </button>
-          <button class="icon-btn tooltip" data-tooltip="Delete Account" style="color: var(--accent-rose)" onclick="deleteAccountFromCache('${acc.address}')">
+          <button class="icon-btn tooltip" data-tooltip="Decommission Node" style="color: var(--neon-hot-pink)" onclick="deleteAccountFromCache('${acc.address}')">
             <i data-lucide="trash-2"></i>
           </button>
         </div>
@@ -494,7 +473,8 @@ function switchActiveEmail(address) {
   const targetAcc = state.accounts.find(a => a.address === address);
   if (targetAcc) {
     setActiveAccount(targetAcc);
-    showToast(`Switched inbox to: ${address}`);
+    showToast(`Switched stream to: ${address}`);
+    writeConsoleLog(`> STREAM TERMINAL LINK BOUND TO: ${address}.`);
     closeDrawer('history');
   }
 }
@@ -534,7 +514,7 @@ function copyAddressToClipboard(address) {
 }
 
 function deleteAccountFromCache(address) {
-  if (confirm(`Are you sure you want to delete account: ${address}? You will lose all messages in this inbox.`)) {
+  if (confirm(`Are you sure you want to decommission node: ${address}? You will lose all messages in this stream.`)) {
     state.accounts = state.accounts.filter(a => a.address !== address);
     saveAccountsToCache();
     
@@ -544,7 +524,8 @@ function deleteAccountFromCache(address) {
       renderAccountHistory();
     }
     
-    showToast('Account removed locally');
+    showToast('Node decommissioned');
+    writeConsoleLog(`> NODE ${address} DECOMMISSIONED AND DETACHED.`);
   }
 }
 
@@ -570,11 +551,11 @@ function stopPolling() {
 }
 
 function saveAccountsToCache() {
-  localStorage.setItem('tempmail_accounts_v2', JSON.stringify(state.accounts));
+  localStorage.setItem('tempmail_accounts_v3_1secmail', JSON.stringify(state.accounts));
 }
 
 function loadAccountsFromCache() {
-  const cached = localStorage.getItem('tempmail_accounts_v2');
+  const cached = localStorage.getItem('tempmail_accounts_v3_1secmail');
   if (cached) {
     try {
       state.accounts = JSON.parse(cached);
@@ -584,16 +565,22 @@ function loadAccountsFromCache() {
   }
 }
 
-// Generate secure random username prefixes
+// Generate random username prefixes
 function generateRandomPrefix() {
-  const adjectives = ['swift', 'hyper', 'neon', 'glitch', 'retro', 'cyber', 'cosmic', 'sonic', 'sweet', 'cool'];
-  const nouns = ['wolf', 'duck', 'falcon', 'ghost', 'nexus', 'matrix', 'pixel', 'rider', 'shark', 'wave'];
-  
-  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-  const noun = nouns[Math.floor(Math.random() * nouns.length)];
-  const num = Math.floor(100 + Math.random() * 900); // 3 digit random
+  const words = ['swift', 'hyper', 'neon', 'glitch', 'retro', 'cyber', 'cosmic', 'sonic', 'nexus', 'pixel', 'rider', 'wave', 'ghost', 'shadow', 'matrix'];
+  const w1 = words[Math.floor(Math.random() * words.length)];
+  const w2 = words[Math.floor(Math.random() * words.length)];
+  const num = Math.floor(1000 + Math.random() * 9000); // 4-digit unique
+  return `${w1}.${w2}${num}`;
+}
 
-  return `${adj}.${noun}${num}`;
+// Parse sender names from email address
+function parseSenderName(senderStr) {
+  if (!senderStr) return 'Sender';
+  const match = senderStr.match(/^(.*?)\s*<([^>]+)>/);
+  if (match) return match[1].replace(/['"]/g, '').trim();
+  const atIdx = senderStr.indexOf('@');
+  return atIdx !== -1 ? senderStr.substring(0, atIdx) : senderStr;
 }
 
 // Slide Over Drawer triggers
@@ -705,10 +692,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 1. Initial Load Cache
   loadAccountsFromCache();
 
-  // 2. Fetch Mail.tm domains configuration list
-  await fetchConfig();
-
-  // 3. Set Active account or auto generate initial temp email instantly
+  // 2. Set Active account or auto generate initial temp email instantly
   if (state.accounts.length > 0) {
     setActiveAccount(state.accounts[0]);
   } else {
@@ -716,10 +700,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     await createAccount();
   }
 
-  // 4. Hydrate Lucide SVG icons
+  // 3. Hydrate Lucide SVG icons
   lucide.createIcons();
 
-  // 5. Drawer overlay triggers
+  // 4. Drawer overlay triggers
   document.getElementById('openHistoryBtn').onclick = () => openDrawer('history');
   document.getElementById('closeHistoryBtn').onclick = () => closeDrawer('history');
   document.getElementById('historyOverlay').onclick = () => closeDrawer('history');
@@ -728,7 +712,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('closeMailerBtn').onclick = () => closeDrawer('mailer');
   document.getElementById('mailerOverlay').onclick = () => closeDrawer('mailer');
 
-  // 6. Action: Generate New Email Address
+  // 5. Action: Generate New Email Address
   document.getElementById('generateEmailBtn').onclick = async () => {
     const prefixInput = document.getElementById('customPrefixInput');
     const domainSelect = document.getElementById('domainSelect');

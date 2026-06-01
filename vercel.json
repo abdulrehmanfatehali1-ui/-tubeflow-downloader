@@ -5,6 +5,10 @@
     { "src": "tempmail/**/*", "use": "@vercel/static" },
     { "src": "static/**/*", "use": "@vercel/static" },
     { "src": "public/**/*", "use": "@vercel/static" },
-    { "src": "index.html", "use": "@vercel/static" }
+    { "src": "index.html", "use": "@vercel/static" },
+    { "src": "api/mail.js", "use": "@vercel/node" }
+  ],
+  "routes": [
+    { "src": "/api/mail", "dest": "/api/mail.js" }
   ]
 }
