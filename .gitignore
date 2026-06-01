@@ -18,7 +18,13 @@ __pycache__/
 *.tar.gz
 *.exe
 *.apk
-android-app/
+# Android build folders to ignore, while tracking the source code
+android-app/.gradle/
+android-app/.idea/
+android-app/build/
+android-app/app/build/
+android-app/local.properties
+android-app/*.apk
 
 # System log files
 *.log
