@@ -970,6 +970,176 @@ def async_download_worker(url, format_id, task_id, title, is_merge):
                     'msg': f"Download failed: {str(e)}"
                 })
 
+def universal_server_download_worker(url, format_id, task_id, quality_label, format_type):
+    try:
+        temp_dir = tempfile.gettempdir()
+        is_youtube = "youtube.com" in url or "youtu.be" in url
+        is_merge = (format_type == 'merge')
+        
+        # 1. Primary High-Speed Bypass: Request unblocked public Cobalt API directly
+        if is_youtube:
+            with tasks_lock:
+                DOWNLOAD_TASKS[task_id].update({
+                    'status': 'downloading',
+                    'percent': 10,
+                    'msg': 'Requesting unblocked high-speed bypass node...'
+                })
+            try:
+                cobalt_res = None
+                for instance in COBALT_INSTANCES:
+                    res = query_single_cobalt(instance, url)
+                    if res:
+                        cobalt_res = res
+                        break
+                
+                if cobalt_res:
+                    direct_url = cobalt_res['data'].get('url')
+                    title = cobalt_res['data'].get('filename') or "video"
+                    if title.endswith('.mp4') or title.endswith('.webm') or title.endswith('.mkv'):
+                        title = title.rsplit('.', 1)[0]
+                        
+                    with tasks_lock:
+                        DOWNLOAD_TASKS[task_id].update({
+                            'status': 'downloading',
+                            'percent': 25,
+                            'msg': 'Bypass secure connection established! Streaming bytes...'
+                        })
+                        
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+                    }
+                    if curl_requests:
+                        response = curl_requests.get(direct_url, headers=headers, stream=True, impersonate="chrome", timeout=30)
+                    else:
+                        response = requests.get(direct_url, headers=headers, stream=True, timeout=30)
+                    response.raise_for_status()
+                    
+                    final_filepath = os.path.join(temp_dir, f"tubeflow_{task_id}.mp4")
+                    total_size = int(response.headers.get('content-length', 0))
+                    downloaded = 0
+                    
+                    with open(final_filepath, 'wb') as f_out:
+                        for chunk in response.iter_content(chunk_size=1024 * 1024):
+                            if chunk:
+                                f_out.write(chunk)
+                                downloaded += len(chunk)
+                                percent = round((downloaded / total_size) * 100, 1) if total_size > 0 else 50
+                                mapped_pct = 25 + int(percent * 0.7)
+                                with tasks_lock:
+                                    DOWNLOAD_TASKS[task_id].update({
+                                        'status': 'downloading',
+                                        'percent': mapped_pct,
+                                        'msg': f"Downloading via bypass node: {percent}% completed"
+                                    })
+                                    
+                    safe_title = sanitize_filename(title)
+                    filename = f"{safe_title}.mp4"
+                    
+                    with tasks_lock:
+                        DOWNLOAD_TASKS[task_id].update({
+                            'status': 'completed',
+                            'percent': 100,
+                            'filepath': final_filepath,
+                            'filename': filename,
+                            'msg': "Download complete! Ready to save."
+                        })
+                    return
+            except Exception as e:
+                print(f"TubeFlow Async: Primary Cobalt bypass failed ({str(e)}), falling back to standard...")
+                
+        # 2. Secondary Fallback: Extract and resolve on server using server-IP authorized streams
+        with tasks_lock:
+            DOWNLOAD_TASKS[task_id].update({
+                'status': 'downloading',
+                'percent': 20,
+                'msg': 'Resolving server-side secure streams...'
+            })
+            
+        server_data = extract_video_data_server(url)
+        title = server_data.get('title', 'video')
+        
+        selected_format = None
+        target_list = server_data.get('audio_formats' if format_type == 'audio' else 'video_formats', [])
+        
+        # Match by requested quality label
+        for f in target_list:
+            if f.get('quality_label') == quality_label:
+                selected_format = f
+                break
+                
+        if not selected_format and target_list:
+            selected_format = target_list[0]
+            
+        if not selected_format:
+            raise Exception(f"Format quality {quality_label} not found on server")
+            
+        server_format_id = selected_format.get('format_id')
+        ext = selected_format.get('ext', 'mp4')
+        is_merge = (selected_format.get('type') == 'merge')
+        
+        # Check if the resolved format is base64 encoded direct stream payload
+        is_server_direct = False
+        server_direct_url = ""
+        try:
+            decoded = base64.b64decode(server_format_id.encode('utf-8')).decode('utf-8')
+            if '|' in decoded and (decoded.startswith('http://') or decoded.startswith('https://')):
+                parts = decoded.split('|')
+                server_direct_url = parts[0]
+                is_server_direct = True
+        except Exception:
+            pass
+            
+        if is_server_direct:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+            }
+            if curl_requests:
+                response = curl_requests.get(server_direct_url, headers=headers, stream=True, impersonate="chrome", timeout=25)
+            else:
+                response = requests.get(server_direct_url, headers=headers, stream=True, timeout=25)
+            response.raise_for_status()
+            
+            final_filepath = os.path.join(temp_dir, f"tubeflow_{task_id}.{ext}")
+            total_size = int(response.headers.get('content-length', 0))
+            downloaded = 0
+            
+            with open(final_filepath, 'wb') as f_out:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        f_out.write(chunk)
+                        downloaded += len(chunk)
+                        percent = round((downloaded / total_size) * 100, 1) if total_size > 0 else 50
+                        mapped_pct = 30 + int(percent * 0.65)
+                        with tasks_lock:
+                            DOWNLOAD_TASKS[task_id].update({
+                                'status': 'downloading',
+                                'percent': mapped_pct,
+                                'msg': f"Downloading secure stream: {percent}% completed"
+                            })
+                            
+            safe_title = sanitize_filename(title)
+            filename = f"{safe_title}.{ext}"
+            
+            with tasks_lock:
+                DOWNLOAD_TASKS[task_id].update({
+                    'status': 'completed',
+                    'percent': 100,
+                    'filepath': final_filepath,
+                    'filename': filename,
+                    'msg': "Download complete! Ready to save."
+                })
+        else:
+            async_download_worker(url, server_format_id, task_id, title, is_merge)
+            
+    except Exception as e:
+        print(f"TubeFlow Universal Async Error: {str(e)}")
+        with tasks_lock:
+            if task_id in DOWNLOAD_TASKS:
+                DOWNLOAD_TASKS[task_id].update({
+                    'status': 'error',
+                    'msg': f"Bypass Failed: {str(e)}"
+                })
+
 # API 1: Start background download task
 @app.route('/api/download/start')
 def start_async_download():
@@ -1022,73 +1192,28 @@ def start_async_download():
         thread.start()
         return jsonify({'task_id': task_id, 'title': title})
         
-    try:
-        # YouTube files MUST extract and resolve URLs using the server's own IP to bypass the IP lock!
-        server_data = extract_video_data_server(url)
-        title = server_data.get('title', 'video')
+    # Standard server bypass download: runs entirely in the background thread for instant response!
+    task_id = str(uuid.uuid4())
+    with tasks_lock:
+        DOWNLOAD_TASKS[task_id] = {
+            'status': 'starting',
+            'percent': 0,
+            'speed': '0 KB/s',
+            'eta': 'calculating...',
+            'msg': 'Initializing secure server bypass connection...',
+            'filepath': '',
+            'filename': '',
+            'created_at': time.time()
+        }
         
-        selected_format = None
-        target_list = server_data.get('audio_formats' if format_type == 'audio' else 'video_formats', [])
-        
-        # Match by requested quality label
-        for f in target_list:
-            if f.get('quality_label') == quality_label:
-                selected_format = f
-                break
-                
-        if not selected_format and target_list:
-            selected_format = target_list[0]
-            
-        if not selected_format:
-            return jsonify({'error': f'Format quality {quality_label} not found on server'}), 404
-            
-        server_format_id = selected_format.get('format_id')
-        ext = selected_format.get('ext', 'mp4')
-        is_merge = (selected_format.get('type') == 'merge')
-        
-        task_id = str(uuid.uuid4())
-        with tasks_lock:
-            DOWNLOAD_TASKS[task_id] = {
-                'status': 'starting',
-                'percent': 0,
-                'speed': '0 KB/s',
-                'eta': 'calculating...',
-                'msg': 'Initializing secure server bypass connection...',
-                'filepath': '',
-                'filename': '',
-                'created_at': time.time()
-            }
-            
-        # Check if the resolved format is base64 encoded direct stream payload
-        is_server_direct = False
-        server_direct_url = ""
-        try:
-            decoded = base64.b64decode(server_format_id.encode('utf-8')).decode('utf-8')
-            if '|' in decoded and (decoded.startswith('http://') or decoded.startswith('https://')):
-                parts = decoded.split('|')
-                server_direct_url = parts[0]
-                is_server_direct = True
-        except Exception:
-            pass
-            
-        if is_server_direct:
-            thread = threading.Thread(
-                target=direct_stream_download_worker,
-                args=(server_direct_url, task_id, title, ext),
-                daemon=True
-            )
-        else:
-            thread = threading.Thread(
-                target=async_download_worker,
-                args=(url, server_format_id, task_id, title, is_merge),
-                daemon=True
-            )
-        thread.start()
-        
-        return jsonify({'task_id': task_id, 'title': title})
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    thread = threading.Thread(
+        target=universal_server_download_worker,
+        args=(url, format_id, task_id, quality_label, format_type),
+        daemon=True
+    )
+    thread.start()
+    
+    return jsonify({'task_id': task_id, 'title': 'Processing Media'})
 
 # API 2: Query download task progress
 @app.route('/api/download/progress')
