@@ -134,32 +134,44 @@ def get_dynamic_invidious_instances():
     return INVIDIOUS_INSTANCES
 
 def query_single_cobalt(instance, url):
-    try:
-        headers = {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
-        payload = {
+    headers = {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+    }
+    
+    payloads = [
+        # Level 1: Strict v7 payload
+        {
             'url': url,
-            'vQuality': '720',
-            'filenamePattern': 'classic'
+            'videoQuality': '720'
+        },
+        # Level 2: Strict v6 payload
+        {
+            'url': url,
+            'vQuality': '720'
+        },
+        # Level 3: Minimal universal payload
+        {
+            'url': url
         }
-        for path in ["/api/json", ""]:
+    ]
+    
+    for path in ["/api/json", ""]:
+        for payload in payloads:
             try:
                 target_url = f"{instance.rstrip('/')}{path}"
                 if curl_requests:
                     response = curl_requests.post(target_url, headers=headers, json=payload, impersonate="chrome", timeout=5)
                 else:
                     response = requests.post(target_url, headers=headers, json=payload, timeout=5)
+                
                 if response.status_code == 200:
                     data = response.json()
                     if data and data.get('status') in ['stream', 'redirect', 'tunnel', 'picker']:
                         return {'source': 'cobalt', 'data': data, 'instance': instance}
             except Exception:
                 pass
-    except Exception:
-        pass
     return None
 
 def parse_cobalt_info(data, url):
