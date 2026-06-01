@@ -710,6 +710,28 @@ function toggleDownloadButtons(enabled) {
 async function triggerDownload(formatId, ext, qualityLabel) {
     if (!currentVideo) return;
     
+    // Check if it is a combined direct stream URL to download directly in the browser!
+    try {
+        const decoded = atob(formatId);
+        if (decoded.includes('|') && !formatId.includes('merge')) {
+            const parts = decoded.split('|');
+            const directUrl = parts[0];
+            const title = parts[1] || 'video';
+            const ext = parts[2] || 'mp4';
+            if (directUrl.startsWith('http://') || directUrl.startsWith('https://')) {
+                const link = document.createElement('a');
+                link.href = directUrl;
+                link.target = '_blank';
+                link.download = `${title.replace(/[\\/*?:"<>|]/g, '')}_${qualityLabel}.${ext}`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                showStatus('Download started directly in browser at full speed!', 'success');
+                return;
+            }
+        }
+    } catch (_) {}
+    
     // Clear any existing active download intervals
     if (activeDownloadInterval) {
         clearInterval(activeDownloadInterval);

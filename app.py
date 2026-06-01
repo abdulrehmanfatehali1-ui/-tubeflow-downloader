@@ -424,7 +424,16 @@ def direct_stream_download_worker(direct_url, task_id, title, ext):
         temp_dir = tempfile.gettempdir()
         final_filepath = os.path.join(temp_dir, f"tubeflow_{task_id}.{ext}")
         
-        response = requests.get(direct_url, stream=True, timeout=120)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': '*/*',
+            'Accept-Encoding': 'identity',
+            'Connection': 'keep-alive'
+        }
+        if curl_requests:
+            response = curl_requests.get(direct_url, headers=headers, stream=True, impersonate="chrome", timeout=20)
+        else:
+            response = requests.get(direct_url, headers=headers, stream=True, timeout=20)
         response.raise_for_status()
         
         total_size = int(response.headers.get('content-length', 0))
