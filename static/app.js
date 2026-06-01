@@ -712,6 +712,75 @@ function toggleDownloadButtons(enabled) {
 async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     if (!currentVideo) return;
     
+    const isCombined = formatType === 'combined' || qualityLabel === 'Audio';
+    
+    if (isCombined) {
+        try {
+            const decoded = atob(formatId);
+            if (decoded.includes('|')) {
+                const parts = decoded.split('|');
+                const directUrl = parts[0];
+                const title = parts[1] || 'video';
+                const downloadFilename = `${title.replace(/[\\/*?:"<>|]/g, '')}_${qualityLabel}.${ext}`;
+                
+                showStatus('Downloading file directly to your browser (100% bypass)... Please wait.', 'loading');
+                
+                // Show Progress Bar
+                progressSection.classList.remove('hidden');
+                progressSection.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                
+                const progressFill = document.getElementById('progress-bar-fill');
+                const progressPercent = document.getElementById('progress-percent');
+                const progressStatus = document.getElementById('progress-status');
+                const progressFileLabel = document.getElementById('progress-filename');
+                
+                progressFileLabel.textContent = downloadFilename;
+                progressFill.style.width = '30%';
+                progressFill.classList.add('pulsing-fill');
+                progressPercent.textContent = 'Buffering';
+                progressStatus.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin font-accent"></i> Streaming file bytes directly in same tab...`;
+                
+                try {
+                    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(directUrl)}`;
+                    const response = await fetch(proxyUrl);
+                    if (!response.ok) throw new Error("CORS Proxy failed");
+                    
+                    progressFill.style.width = '70%';
+                    progressPercent.textContent = 'Saving';
+                    progressStatus.innerHTML = `<i class="fa-solid fa-spinner fa-spin font-accent"></i> Assembling file bytes...`;
+                    
+                    const blob = await response.blob();
+                    const blobUrl = URL.createObjectURL(blob);
+                    
+                    const link = document.createElement('a');
+                    link.href = blobUrl;
+                    link.download = downloadFilename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(blobUrl);
+                    
+                    progressFill.style.width = '100%';
+                    progressFill.classList.remove('pulsing-fill');
+                    progressPercent.textContent = '100%';
+                    progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Download completed successfully in same tab!</span>`;
+                    showStatus('Download completed successfully!', 'success');
+                    
+                    setTimeout(() => {
+                        progressSection.classList.add('hidden');
+                    }, 5000);
+                    return;
+                } catch (err) {
+                    console.warn("CORS blob download failed, falling back to direct tab:", err);
+                    window.open(directUrl, '_blank');
+                    progressSection.classList.add('hidden');
+                    showStatus('Download opened in a new tab at full speed!', 'success');
+                    return;
+                }
+            }
+        } catch (_) {}
+    }
+    
     // Clear any existing active download intervals
     if (activeDownloadInterval) {
         clearInterval(activeDownloadInterval);
