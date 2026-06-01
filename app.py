@@ -11,6 +11,12 @@ from flask import Flask, request, jsonify, render_template, Response, stream_wit
 import yt_dlp
 import requests
 
+# Try importing curl_cffi for Cloudflare-bypassing Chrome TLS impersonation on the server
+try:
+    from curl_cffi import requests as curl_requests
+except ImportError:
+    curl_requests = None
+
 # Try importing static_ffmpeg to load static Windows ffmpeg binaries at runtime
 try:
     import static_ffmpeg
@@ -36,6 +42,11 @@ def get_ydl_opts(extra_opts=None):
             }
         }
     }
+    
+    # Auto-load Netscape cookies if cookies.txt is present in the app's root folder!
+    # This completely unblocks YouTube extractions forever on the cloud server!
+    if os.path.exists('cookies.txt'):
+        opts['cookiefile'] = 'cookies.txt'
     try:
         from yt_dlp.networking.impersonate import ImpersonateTarget
         opts['impersonate'] = ImpersonateTarget.from_str('chrome')
@@ -86,7 +97,11 @@ def query_single_invidious(instance, video_id):
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
-        response = requests.get(api_url, headers=headers, timeout=3.5)
+        if curl_requests:
+            response = curl_requests.get(api_url, headers=headers, impersonate="chrome", timeout=3.5)
+        else:
+            response = requests.get(api_url, headers=headers, timeout=3.5)
+            
         if response.status_code == 200:
             data = response.json()
             if data and 'title' in data:
@@ -102,7 +117,11 @@ def query_single_piped(instance, video_id):
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
-        response = requests.get(api_url, headers=headers, timeout=3.5)
+        if curl_requests:
+            response = curl_requests.get(api_url, headers=headers, impersonate="chrome", timeout=3.5)
+        else:
+            response = requests.get(api_url, headers=headers, timeout=3.5)
+            
         if response.status_code == 200:
             data = response.json()
             if data and 'title' in data:
