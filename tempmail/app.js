@@ -129,12 +129,23 @@ function scanForOTP(message) {
 // API REST ACTIONS (MAIL.TM CLIENT INTERFACE)
 // ==========================================
 
+// Helper: Safely parse JSON responses to prevent HTML error/rate-limit pages from throwing crashes
+async function safeParseJSON(response) {
+  try {
+    const text = await response.text();
+    return text ? JSON.parse(text) : {};
+  } catch (e) {
+    console.warn('[Parser] Failed to parse JSON response safely:', e);
+    return {};
+  }
+}
+
 // Fetch config domains from Mail.tm
 async function fetchConfig() {
   try {
     const res = await fetch(`${API_BASE}/domains`);
     if (res.ok) {
-      const data = await res.json();
+      const data = await safeParseJSON(res);
       const list = data['hydra:member'] || [];
       // Get all active domains
       state.domains = list.filter(d => d.isActive).map(d => d.domain);
@@ -170,7 +181,7 @@ async function createAccount(prefix = '', domain = '') {
     });
 
     if (!res.ok) {
-      const errData = await res.json();
+      const errData = await safeParseJSON(res);
       throw new Error(errData['hydra:description'] || errData.message || 'Failed to create email');
     }
 
@@ -191,7 +202,7 @@ async function createAccount(prefix = '', domain = '') {
         });
 
         if (tokenRes.ok) {
-          const tokenData = await tokenRes.json();
+          const tokenData = await safeParseJSON(tokenRes);
           token = tokenData.token;
           break; // Authenticated successfully!
         }
@@ -200,7 +211,7 @@ async function createAccount(prefix = '', domain = '') {
         if (i === loginAttempts - 1) {
           let errMsg = 'Failed to authenticate session token';
           try {
-            const errData = await tokenRes.json();
+            const errData = await safeParseJSON(tokenRes);
             errMsg = errData['hydra:description'] || errData.message || errMsg;
           } catch (e) {}
           throw new Error(errMsg);
@@ -242,7 +253,7 @@ async function fetchInbox(isBackground = false) {
 
     if (!res.ok) throw new Error('Failed to fetch messages');
 
-    const data = await res.json();
+    const data = await safeParseJSON(res);
     const serverMails = data['hydra:member'] || [];
     
     // Check if new emails arrived (Trigger chime synth!)
@@ -287,7 +298,7 @@ async function fetchMessageDetails(msgId) {
 
     if (!res.ok) throw new Error('Failed to load email details');
 
-    const mailData = await res.json();
+    const mailData = await safeParseJSON(res);
     state.selectedMessage = mailData;
 
     // Update read state in UI
