@@ -1,5 +1,6 @@
 import os
 import base64
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
 import urllib.parse
 import tempfile
@@ -26,6 +27,9 @@ def get_ydl_opts(extra_opts=None):
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
+        'socket_timeout': 4,
+        'retries': 0,
+        'extractor_retries': 0,
         'extractor_args': {
             'youtube': {
                 'player_client': ['ios', 'web_embedded']
@@ -69,21 +73,30 @@ def extract_youtube_id(url):
     return match.group(1) if match else None
 
 # Fallback function to extract YouTube metadata via public Invidious API
+def query_single_invidious(instance, video_id):
+    try:
+        api_url = f"{instance}/api/v1/videos/{video_id}"
+        response = requests.get(api_url, timeout=3.5)
+        if response.status_code == 200:
+            data = response.json()
+            if data and 'title' in data:
+                return data, instance
+    except Exception:
+        pass
+    return None, None
+
 def fetch_youtube_via_invidious(url):
     video_id = extract_youtube_id(url)
     if not video_id:
         return None, None
         
-    for instance in INVIDIOUS_INSTANCES:
-        try:
-            api_url = f"{instance}/api/v1/videos/{video_id}"
-            response = requests.get(api_url, timeout=6)
-            if response.status_code == 200:
-                data = response.json()
-                if data and 'title' in data:
-                    return data, instance
-        except Exception:
-            continue
+    # Query all instances concurrently via ThreadPoolExecutor for sub-second speeds!
+    with ThreadPoolExecutor(max_workers=len(INVIDIOUS_INSTANCES)) as executor:
+        futures = [executor.submit(query_single_invidious, inst, video_id) for inst in INVIDIOUS_INSTANCES]
+        for future in as_completed(futures):
+            data, instance = future.result()
+            if data:
+                return data, instance
     return None, None
 
 # Mapper to translate Invidious JSON payload to TubeFlow Ultimate UI schema
