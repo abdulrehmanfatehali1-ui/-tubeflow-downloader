@@ -833,9 +833,34 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
                 return;
             }
         } catch (err) {
-            console.warn("Client-side direct download failed, falling back to secure server-side download:", err);
-            startServerSideDownload(formatId, ext, qualityLabel, false, downloadFilename);
-            return;
+            console.warn("Client-side direct download failed, trying high-speed Cobalt client bypass...", err);
+            try {
+                progressStatus.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> Redirecting to high-speed client bypass node...`;
+                const mergedUrl = await getCobaltMergedLink(url, qualityLabel);
+                
+                const link = document.createElement('a');
+                link.href = mergedUrl;
+                link.download = downloadFilename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                progressFill.style.width = '100%';
+                progressFill.classList.remove('pulsing-fill');
+                progressPercent.textContent = '100%';
+                progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Redirected successfully! Download starting at full speed.</span>`;
+                showStatus('Download started successfully!', 'success');
+                toggleDownloadButtons(true);
+                
+                setTimeout(() => {
+                    progressSection.classList.add('hidden');
+                }, 5000);
+                return;
+            } catch (cobaltErr) {
+                console.warn("Client-side Cobalt bypass failed, falling back to secure server-side download:", cobaltErr);
+                startServerSideDownload(formatId, ext, qualityLabel, false, downloadFilename);
+                return;
+            }
         }
     }
     
@@ -846,34 +871,19 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
             // Fetch pre-merged stream URL from Cobalt's dynamic API
             const mergedUrl = await getCobaltMergedLink(url, qualityLabel);
             
-            progressFill.style.width = '60%';
-            progressPercent.textContent = 'Streaming';
-            progressStatus.innerHTML = `<i class="fa-solid fa-spinner fa-spin font-accent"></i> Streaming merged HD file bytes directly in same tab...`;
+            progressFill.style.width = '100%';
+            progressFill.classList.remove('pulsing-fill');
+            progressPercent.textContent = '100%';
+            progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> HD Bypass connection established! Starting download...</span>`;
             
-            // Download merged file via CORS proxy
-            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(mergedUrl)}`;
-            const response = await fetch(proxyUrl);
-            if (!response.ok) throw new Error("CORS Proxy failed to stream merged file");
-            
-            progressFill.style.width = '85%';
-            progressPercent.textContent = 'Assembling';
-            progressStatus.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin font-accent"></i> Finalizing high-definition MP4 file with sound...`;
-            
-            const blob = await response.blob();
-            const blobUrl = URL.createObjectURL(blob);
-            
+            // Directly click to trigger direct native same-tab download from Cobalt's unblocked servers at maximum speed!
             const link = document.createElement('a');
-            link.href = blobUrl;
+            link.href = mergedUrl;
             link.download = downloadFilename;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            URL.revokeObjectURL(blobUrl);
             
-            progressFill.style.width = '100%';
-            progressFill.classList.remove('pulsing-fill');
-            progressPercent.textContent = '100%';
-            progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> HD Download completed successfully with sound!</span>`;
             showStatus('High-Definition download completed successfully!', 'success');
             toggleDownloadButtons(true);
             
