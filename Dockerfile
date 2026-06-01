@@ -10,6 +10,9 @@ RUN apt-get update && apt-get install -y \
     libnspr4 \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy the Deno JavaScript runtime from the official binary image to enable yt-dlp signature deciphering!
+COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
+
 # Set working directory
 WORKDIR /app
 
