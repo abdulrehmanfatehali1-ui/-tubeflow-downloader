@@ -65,6 +65,11 @@ def get_ydl_opts(extra_opts=None):
     # This completely unblocks YouTube extractions forever on the cloud server!
     if os.path.exists('cookies.txt'):
         opts['cookiefile'] = 'cookies.txt'
+    try:
+        from yt_dlp.networking.impersonate import ImpersonateTarget
+        opts['impersonate'] = ImpersonateTarget.from_str('chrome')
+    except Exception:
+        pass
 
     
     if extra_opts:
