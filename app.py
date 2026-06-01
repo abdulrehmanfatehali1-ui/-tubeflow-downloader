@@ -48,9 +48,9 @@ def get_ydl_opts(extra_opts=None):
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
-        'socket_timeout': 4,
-        'retries': 0,
-        'extractor_retries': 0,
+        'socket_timeout': 15,
+        'retries': 2,
+        'extractor_retries': 2,
         'extractor_args': {
             'youtube': {
                 'player_client': ['android', 'ios', 'tv', 'creator']
