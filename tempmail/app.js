@@ -162,7 +162,10 @@ async function createAccount(prefix = '', domain = '') {
     // 1. Create Account
     const res = await fetch(`${API_BASE}/accounts`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
       body: JSON.stringify({ address, password })
     });
 
@@ -171,15 +174,26 @@ async function createAccount(prefix = '', domain = '') {
       throw new Error(errData['hydra:description'] || errData.message || 'Failed to create email');
     }
 
+    // 1.5. Introduce a small delay (1200ms) to allow Mail.tm eventual consistency sync
+    await new Promise(resolve => setTimeout(resolve, 1200));
+
     // 2. Fetch JWT Session token (Login)
     const tokenRes = await fetch(`${API_BASE}/token`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
       body: JSON.stringify({ address, password })
     });
 
     if (!tokenRes.ok) {
-      throw new Error('Failed to authenticate session token');
+      let errMsg = 'Failed to authenticate session token';
+      try {
+        const errData = await tokenRes.json();
+        errMsg = errData['hydra:description'] || errData.message || errMsg;
+      } catch (e) {}
+      throw new Error(errMsg);
     }
 
     const tokenData = await tokenRes.json();
@@ -205,7 +219,8 @@ async function fetchInbox(isBackground = false) {
   try {
     const res = await fetch(`${API_BASE}/messages`, {
       headers: {
-        'Authorization': `Bearer ${state.activeAccount.token}`
+        'Authorization': `Bearer ${state.activeAccount.token}`,
+        'Accept': 'application/json'
       }
     });
 
@@ -249,7 +264,8 @@ async function fetchMessageDetails(msgId) {
   try {
     const res = await fetch(`${API_BASE}/messages/${msgId}`, {
       headers: {
-        'Authorization': `Bearer ${state.activeAccount.token}`
+        'Authorization': `Bearer ${state.activeAccount.token}`,
+        'Accept': 'application/json'
       }
     });
 
