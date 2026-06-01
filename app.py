@@ -11,6 +11,8 @@ import subprocess
 from flask import Flask, request, jsonify, render_template, Response, stream_with_context
 import yt_dlp
 import requests
+import socket
+socket.setdefaulttimeout(12.0)
 
 # Try importing curl_cffi for Cloudflare-bypassing Chrome TLS impersonation on the server
 try:
@@ -104,10 +106,13 @@ PIPED_INSTANCES = [
 ]
 
 COBALT_INSTANCES = [
+    'https://co.wuk.sh',
     'https://api.cobalt.tools',
     'https://cobalt.api.ryz.cx',
     'https://cobalt.best',
-    'https://cobalt.moe'
+    'https://cobalt.moe',
+    'https://co.eepy.today',
+    'https://api.kuko.rip'
 ]
 
 def get_dynamic_invidious_instances():
@@ -252,13 +257,16 @@ def fetch_youtube_via_fallback_apis(url):
         for inst in COBALT_INSTANCES:
             futures.append(executor.submit(query_single_cobalt, inst, url))
             
-        for future in as_completed(futures):
-            try:
-                res = future.result()
-                if res:
-                    return res
-            except Exception:
-                pass
+        try:
+            for future in as_completed(futures, timeout=8.0):
+                try:
+                    res = future.result()
+                    if res:
+                        return res
+                except Exception:
+                    pass
+        except Exception:
+            pass
     return None
 
 # Mapper to translate Invidious JSON payload to TubeFlow Ultimate UI schema

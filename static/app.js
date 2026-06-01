@@ -710,10 +710,13 @@ function toggleDownloadButtons(enabled) {
 // Client-Side high-resolution video + audio merger using public Cobalt APIs
 async function getCobaltMergedLink(videoUrl, qualityLabel, isAudio = false) {
     const instances = [
+        'https://co.wuk.sh',
         'https://api.cobalt.tools',
         'https://cobalt.api.ryz.cx',
         'https://cobalt.best',
-        'https://cobalt.moe'
+        'https://cobalt.moe',
+        'https://co.eepy.today',
+        'https://api.kuko.rip'
     ];
     
     let quality = '720';
