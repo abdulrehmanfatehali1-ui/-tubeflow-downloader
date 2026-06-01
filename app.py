@@ -19,12 +19,17 @@ except Exception as e:
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 
-# Helper to generate yt-dlp options with browser impersonation to bypass cloud blocking / SSL unexpected EOF
+# Helper to generate yt-dlp options with browser impersonation and alternative player clients to bypass cloud blocking / SSL EOF / bot checks
 def get_ydl_opts(extra_opts=None):
     opts = {
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['ios', 'web_embedded']
+            }
+        }
     }
     try:
         from yt_dlp.networking.impersonate import ImpersonateTarget
@@ -33,7 +38,13 @@ def get_ydl_opts(extra_opts=None):
         pass
     
     if extra_opts:
-        opts.update(extra_opts)
+        if 'extractor_args' in extra_opts:
+            opts['extractor_args'].update(extra_opts['extractor_args'])
+            for k, v in extra_opts.items():
+                if k != 'extractor_args':
+                    opts[k] = v
+        else:
+            opts.update(extra_opts)
     return opts
 
 # Global Task Registry to hold live download states
@@ -118,6 +129,11 @@ def get_info():
                 'no_warnings': True,
                 'nocheckcertificate': True,
                 'extract_flat': False,
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['ios', 'web_embedded']
+                    }
+                }
             }
             with yt_dlp.YoutubeDL(fallback_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
@@ -356,7 +372,12 @@ def async_download_worker(url, format_id, task_id, title, is_merge):
                 'progress_hooks': ydl_opts.get('progress_hooks'),
                 'merge_output_format': ydl_opts.get('merge_output_format'),
                 'postprocessor_args': ydl_opts.get('postprocessor_args'),
-                'ffmpeg_location': ydl_opts.get('ffmpeg_location')
+                'ffmpeg_location': ydl_opts.get('ffmpeg_location'),
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['ios', 'web_embedded']
+                    }
+                }
             }
             with yt_dlp.YoutubeDL(fallback_opts) as ydl:
                 ydl.download([url])
@@ -370,7 +391,16 @@ def async_download_worker(url, format_id, task_id, title, is_merge):
                 with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl_info:
                     res_info = ydl_info.extract_info(url, download=False)
             except Exception:
-                fallback_info_opts = {'quiet': True, 'no_warnings': True, 'nocheckcertificate': True}
+                fallback_info_opts = {
+                    'quiet': True,
+                    'no_warnings': True,
+                    'nocheckcertificate': True,
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': ['ios', 'web_embedded']
+                        }
+                    }
+                }
                 with yt_dlp.YoutubeDL(fallback_info_opts) as ydl_info:
                     res_info = ydl_info.extract_info(url, download=False)
                 for f in res_info.get('formats', []):
@@ -430,7 +460,16 @@ def start_async_download():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
         except Exception:
-            fallback_opts = {'quiet': True, 'no_warnings': True, 'nocheckcertificate': True}
+            fallback_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'nocheckcertificate': True,
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['ios', 'web_embedded']
+                    }
+                }
+            }
             with yt_dlp.YoutubeDL(fallback_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
             
