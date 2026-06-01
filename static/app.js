@@ -706,6 +706,52 @@ function toggleDownloadButtons(enabled) {
             btn.style.cursor = 'pointer';
         }
     });
+// Client-Side high-resolution video + audio merger using public Cobalt APIs
+async function getCobaltMergedLink(videoUrl, qualityLabel, isAudio = false) {
+    const instances = [
+        'https://api.cobalt.tools',
+        'https://cobalt.api.ryz.cx',
+        'https://cobalt.best',
+        'https://cobalt.moe'
+    ];
+    
+    let quality = '720';
+    const q = qualityLabel.toLowerCase();
+    if (q.includes('2160') || q.includes('4k')) quality = '2160';
+    else if (q.includes('1440') || q.includes('2k')) quality = '1440';
+    else if (q.includes('1080')) quality = '1080';
+    else if (q.includes('720')) quality = '720';
+    else if (q.includes('480')) quality = '480';
+    else if (q.includes('360')) quality = '360';
+    
+    const payload = {
+        url: videoUrl,
+        vQuality: quality,
+        isAudioOnly: isAudio,
+        filenamePattern: 'classic'
+    };
+    
+    for (let instance of instances) {
+        for (let path of ["/api/json", ""]) {
+            try {
+                const response = await fetch(`${instance}${path}`, {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                if (response.ok) {
+                    const json = await response.json();
+                    if (json && json.url && ['stream', 'redirect', 'tunnel'].includes(json.status)) {
+                        return json.url;
+                    }
+                }
+            } catch (_) {}
+        }
+    }
+    throw new Error("SaaS merge servers are currently busy. Please try a standard 'Direct' resolution.");
 }
 
 // Trigger Asynchronous progress-monitored download
@@ -774,13 +820,6 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
                     console.warn("CORS blob download failed, falling back to direct tab:", err);
                     window.open(directUrl, '_blank');
                     progressSection.classList.add('hidden');
-                    showStatus('Download opened in a new tab at full speed!', 'success');
-                    return;
-                }
-            }
-        } catch (_) {}
-    }
-    
     // Clear any existing active download intervals
     if (activeDownloadInterval) {
         clearInterval(activeDownloadInterval);
@@ -791,7 +830,13 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     const title = currentVideo.title;
     const downloadFilename = `${title.replace(/[\\/*?:"<>|]/g, '')}_${qualityLabel}.${ext}`;
     
-    // Initialize & Show Progress Bar Card
+    const isCombined = formatType === 'combined' || qualityLabel === 'Audio';
+    const isMerge = formatType === 'merge';
+    
+    // Set Loading state
+    showStatus('Processing download... Please wait.', 'loading');
+    
+    // Show Progress Bar Card
     progressSection.classList.remove('hidden');
     progressSection.scrollIntoView({ behavior: 'smooth', block: 'end' });
     
@@ -801,128 +846,118 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     const progressFileLabel = document.getElementById('progress-filename');
     
     progressFileLabel.textContent = downloadFilename;
-    progressFill.style.width = '0%';
-    progressPercent.textContent = '0%';
-    progressStatus.innerHTML = `<i class="fa-solid fa-spinner fa-spin font-accent"></i> Initializing download task on server...`;
+    progressFill.style.width = '30%';
+    progressFill.classList.add('pulsing-fill');
+    progressPercent.textContent = 'Buffering';
     
     // Lock buttons
     toggleDownloadButtons(false);
     
-    try {
-        // Step 1: Start Asynchronous Download Task on Backend
-        const startResponse = await fetch(`/api/download/start?url=${encodeURIComponent(url)}&format_id=${formatId}`);
-        const startData = await startResponse.json();
-        
-        if (!startResponse.ok || startData.error) {
-            throw new Error(startData.error || 'Failed to start download task.');
-        }
-        
-        const taskId = startData.task_id;
-        
-        // Step 2: Establish real-time polling to query download progress
-        activeDownloadInterval = setInterval(async () => {
-            try {
-                const progResponse = await fetch(`/api/download/progress?task_id=${taskId}`);
-                if (!progResponse.ok) return; // Silent retry
-                
-                const progData = await progResponse.json();
-                
-                if (progData.status === 'downloading') {
-                    // Update progress fill bar
-                    progressFill.classList.remove('pulsing-fill');
-                    progressFill.style.width = `${progData.percent}%`;
-                    progressPercent.textContent = `${progData.percent}%`;
-                    
-                    // Display download speeds & ETA
-                    progressStatus.innerHTML = `<i class="fa-solid fa-download fa-bounce font-accent"></i> Downloading: ${progData.percent}% &bull; Speed: ${progData.speed} &bull; ETA: ${progData.eta}`;
-                    
-                } else if (progData.status === 'merging') {
-                    // High-quality merge postprocessing in progress
-                    progressFill.style.width = '95%';
-                    progressFill.classList.add('pulsing-fill');
-                    progressPercent.textContent = '95%';
-                    progressStatus.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> ${progData.msg}`;
-                    
-                } else if (progData.status === 'completed') {
-                    // Download and merging is fully completed on server!
-                    clearInterval(activeDownloadInterval);
-                    activeDownloadInterval = null;
-                    
-                    progressFill.style.width = '100%';
-                    progressFill.classList.remove('pulsing-fill');
-                    progressPercent.textContent = '100%';
-                    progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Server assembly complete! Saving file natively...</span>`;
-                    
-                    // Unlock buttons
-                    toggleDownloadButtons(true);
-                    
-                    // Step 3: Trigger direct instant file download via hidden iframe
-                    let downloadIframe = document.getElementById('download-iframe');
-                    if (!downloadIframe) {
-                        downloadIframe = document.createElement('iframe');
-                        downloadIframe.id = 'download-iframe';
-                        downloadIframe.style.display = 'none';
-                        document.body.appendChild(downloadIframe);
-                    }
-                    downloadIframe.src = `/api/download/get?task_id=${taskId}`;
-                    
-                    // Hide progress card after 6 seconds
-                    setTimeout(() => {
-                        progressSection.classList.add('hidden');
-                    }, 6000);
-                    
-                } else if (progData.status === 'error') {
-                    clearInterval(activeDownloadInterval);
-                    activeDownloadInterval = null;
-                    
-                    let directLinkHtml = '';
-                    try {
-                        const decoded = atob(formatId);
-                        if (decoded.includes('|')) {
-                            const parts = decoded.split('|');
-                            const directUrl = parts[0];
-                            const title = parts[1] || 'video';
-                            const ext = parts[2] || 'mp4';
-                            const downloadName = `${title.replace(/[\\/*?:"<>|]/g, '')}_${qualityLabel}.${ext}`;
-                            const isCombined = !formatId.includes('merge');
-                            const warningText = isCombined ? ' (With Sound)' : ' (HQ Merge: Video Only)';
-                            
-                            directLinkHtml = `<br><br><a href="${directUrl}" download="${downloadName}" target="_blank" class="btn btn-primary btn-sm btn-dynamic-accent" style="margin-top:10px; display:inline-block; text-decoration:none; color:white; padding:8px 16px; border-radius:8px;"><i class="fa-solid fa-circle-arrow-down"></i> Save Directly in Browser${warningText}</a>`;
-                        }
-                    } catch (_) {}
-                    
-                    progressPercent.textContent = 'Failed';
-                    progressStatus.innerHTML = `<span style="color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Server Download Blocked.<br>Please download directly via user browser:${directLinkHtml}</span>`;
-                    toggleDownloadButtons(true);
-                }
-                
-            } catch (pollErr) {
-                console.error('Polling error:', pollErr);
-            }
-        }, 800);
-        
-    } catch (error) {
-        console.error(error);
-        
-        let directLinkHtml = '';
+    // 1. Direct Browser-Side Download for combined formats (With Sound natively, in Same Tab!)
+    if (isCombined) {
+        progressStatus.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin font-accent"></i> Streaming file bytes directly in same tab...`;
         try {
             const decoded = atob(formatId);
             if (decoded.includes('|')) {
                 const parts = decoded.split('|');
                 const directUrl = parts[0];
-                const title = parts[1] || 'video';
-                const ext = parts[2] || 'mp4';
-                const downloadName = `${title.replace(/[\\/*?:"<>|]/g, '')}_${qualityLabel}.${ext}`;
-                const isCombined = !formatId.includes('merge');
-                const warningText = isCombined ? ' (With Sound)' : ' (HQ Merge: Video Only)';
                 
-                directLinkHtml = `<br><br><a href="${directUrl}" download="${downloadName}" target="_blank" class="btn btn-primary btn-sm btn-dynamic-accent" style="margin-top:10px; display:inline-block; text-decoration:none; color:white; padding:8px 16px; border-radius:8px;"><i class="fa-solid fa-circle-arrow-down"></i> Save Directly in Browser${warningText}</a>`;
+                const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(directUrl)}`;
+                const response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error("CORS Proxy failed");
+                
+                progressFill.style.width = '70%';
+                progressPercent.textContent = 'Saving';
+                progressStatus.innerHTML = `<i class="fa-solid fa-spinner fa-spin font-accent"></i> Assembling file bytes...`;
+                
+                const blob = await response.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                
+                const link = document.createElement('a');
+                link.href = blobUrl;
+                link.download = downloadFilename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(blobUrl);
+                
+                progressFill.style.width = '100%';
+                progressFill.classList.remove('pulsing-fill');
+                progressPercent.textContent = '100%';
+                progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Download completed successfully!</span>`;
+                showStatus('Download completed successfully!', 'success');
+                toggleDownloadButtons(true);
+                
+                setTimeout(() => {
+                    progressSection.classList.add('hidden');
+                }, 5000);
+                return;
             }
-        } catch (_) {}
-        
-        progressPercent.textContent = 'Failed';
-        progressStatus.innerHTML = `<span style="color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Connection Failed.<br>Please download directly via user browser:${directLinkHtml}</span>`;
-        toggleDownloadButtons(true);
+        } catch (err) {
+            console.warn("Client-side direct download failed, falling back to direct tab:", err);
+            try {
+                const decoded = atob(formatId);
+                if (decoded.includes('|')) {
+                    const directUrl = decoded.split('|')[0];
+                    window.open(directUrl, '_blank');
+                }
+            } catch (_) {}
+            progressSection.classList.add('hidden');
+            showStatus('Download opened in a new tab at full speed!', 'success');
+            toggleDownloadButtons(true);
+            return;
+        }
+    }
+    
+    // 2. High-Resolution Video + Audio Merge (Bypasses server block entirely via Client-Side Cobalt Merger!)
+    if (isMerge) {
+        progressStatus.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> Merging high-definition video+audio tracks (100% bypass)...`;
+        try {
+            // Fetch pre-merged stream URL from Cobalt's dynamic API
+            const mergedUrl = await getCobaltMergedLink(url, qualityLabel);
+            
+            progressFill.style.width = '60%';
+            progressPercent.textContent = 'Streaming';
+            progressStatus.innerHTML = `<i class="fa-solid fa-spinner fa-spin font-accent"></i> Streaming merged HD file bytes directly in same tab...`;
+            
+            // Download merged file via CORS proxy
+            const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(mergedUrl)}`;
+            const response = await fetch(proxyUrl);
+            if (!response.ok) throw new Error("CORS Proxy failed to stream merged file");
+            
+            progressFill.style.width = '85%';
+            progressPercent.textContent = 'Assembling';
+            progressStatus.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin font-accent"></i> Finalizing high-definition MP4 file with sound...`;
+            
+            const blob = await response.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = downloadFilename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(blobUrl);
+            
+            progressFill.style.width = '100%';
+            progressFill.classList.remove('pulsing-fill');
+            progressPercent.textContent = '100%';
+            progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> HD Download completed successfully with sound!</span>`;
+            showStatus('High-Definition download completed successfully!', 'success');
+            toggleDownloadButtons(true);
+            
+            setTimeout(() => {
+                progressSection.classList.add('hidden');
+            }, 5000);
+            return;
+        } catch (err) {
+            console.error("Client-side HD merge failed:", err);
+            progressPercent.textContent = 'Failed';
+            progressStatus.innerHTML = `<span style="color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> HD Merge failed. Server is blocked.<br>Please select a standard <b>Direct (Combined)</b> format for instant download.</span>`;
+            toggleDownloadButtons(true);
+            return;
+        }
     }
 }
 
