@@ -106,9 +106,21 @@ def get_info():
         return jsonify({'error': 'URL is required'}), 400
     
     try:
-        ydl_opts = get_ydl_opts({'extract_flat': False})
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+        info = None
+        try:
+            ydl_opts = get_ydl_opts({'extract_flat': False})
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+        except Exception as e:
+            print(f"TubeFlow: Impersonation extraction failed ({str(e)}). Retrying with standard options...")
+            fallback_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'nocheckcertificate': True,
+                'extract_flat': False,
+            }
+            with yt_dlp.YoutubeDL(fallback_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
             
         if not info:
             return jsonify({'error': 'Could not extract video information'}), 400
@@ -329,16 +341,38 @@ def async_download_worker(url, format_id, task_id, title, is_merge):
         if ffmpeg_dir:
             ydl_opts['ffmpeg_location'] = ffmpeg_dir
             
-        # Execute download
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+        # Execute download with fallback
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+        except Exception as dl_err:
+            print(f"TubeFlow: Impersonation download failed ({str(dl_err)}). Retrying with standard options...")
+            fallback_opts = {
+                'format': ydl_opts.get('format'),
+                'outtmpl': ydl_opts.get('outtmpl'),
+                'quiet': True,
+                'no_warnings': True,
+                'nocheckcertificate': True,
+                'progress_hooks': ydl_opts.get('progress_hooks'),
+                'merge_output_format': ydl_opts.get('merge_output_format'),
+                'postprocessor_args': ydl_opts.get('postprocessor_args'),
+                'ffmpeg_location': ydl_opts.get('ffmpeg_location')
+            }
+            with yt_dlp.YoutubeDL(fallback_opts) as ydl:
+                ydl.download([url])
             
         # Discover output filepath
         ext = 'mp4'
         if not is_merge:
             # Check format details to find extension
-            with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl_info:
-                res_info = ydl_info.extract_info(url, download=False)
+            res_info = None
+            try:
+                with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl_info:
+                    res_info = ydl_info.extract_info(url, download=False)
+            except Exception:
+                fallback_info_opts = {'quiet': True, 'no_warnings': True, 'nocheckcertificate': True}
+                with yt_dlp.YoutubeDL(fallback_info_opts) as ydl_info:
+                    res_info = ydl_info.extract_info(url, download=False)
                 for f in res_info.get('formats', []):
                     if f.get('format_id') == format_id:
                         ext = f.get('ext', 'mp4')
@@ -390,9 +424,15 @@ def start_async_download():
         return jsonify({'error': 'URL and format_id are required'}), 400
         
     try:
-        ydl_opts = get_ydl_opts()
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+        info = None
+        try:
+            ydl_opts = get_ydl_opts()
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+        except Exception:
+            fallback_opts = {'quiet': True, 'no_warnings': True, 'nocheckcertificate': True}
+            with yt_dlp.YoutubeDL(fallback_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
             
         if not info:
             return jsonify({'error': 'Could not extract video details'}), 400
