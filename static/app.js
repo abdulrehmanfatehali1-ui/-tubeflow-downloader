@@ -882,14 +882,11 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     
     const url = currentVideo.url;
     const title = currentVideo.title;
-    const downloadFilename = `${title.replace(/[\\/*?:"<>|]/g, '')}_${qualityLabel}.${ext}`;
-    
+    const downloadFilename = `${title.replace(/[\\/*?"<>|]/g, '')}_${qualityLabel}.${ext}`;
     const isAudio = formatType === 'audio' || qualityLabel === 'Audio';
-    
+
     // Set Loading state
     showStatus('Processing download... Please wait.', 'loading');
-    
-    // Show Progress Bar Card
     progressSection.classList.remove('hidden');
     progressSection.scrollIntoView({ behavior: 'smooth', block: 'end' });
     
@@ -899,123 +896,88 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     const progressFileLabel = document.getElementById('progress-filename');
     
     progressFileLabel.textContent = downloadFilename;
-    progressFill.style.width = '30%';
+    progressFill.style.width = '0%';
     progressFill.classList.add('pulsing-fill');
-    progressPercent.textContent = 'Buffering';
-    
-    // Lock buttons
+    progressPercent.textContent = 'Starting';
     toggleDownloadButtons(false);
-    
-    // 1. Try Cobalt first (100% serverless, fast, direct same-tab download)
-    progressStatus.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> Bypassing blocks and establishing high-speed download stream...`;
-    try {
-        const cobaltData = await getCobaltMergedLink(url, qualityLabel, isAudio);
-        const downloadUrl = cobaltData.url;
-        
+
+    // Helper: trigger a native file download from a URL (same tab)
+    function doDirectDownload(downloadUrl, filename) {
         progressFill.style.width = '100%';
         progressFill.classList.remove('pulsing-fill');
         progressPercent.textContent = '100%';
-        progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> High-speed download stream ready! Starting...</span>`;
-        
-        // Trigger native download in the same tab
+        progressStatus.innerHTML = `<span style="color:var(--success)"><i class="fa-solid fa-circle-check"></i> Download started at full speed!</span>`;
+        showStatus('Download started successfully!', 'success');
+        toggleDownloadButtons(true);
         const link = document.createElement('a');
         link.href = downloadUrl;
-        link.download = downloadFilename;
+        link.download = filename;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        
-        showStatus('Download started successfully!', 'success');
-        toggleDownloadButtons(true);
-        
-        setTimeout(() => {
-            progressSection.classList.add('hidden');
-        }, 5000);
-        return;
-        
-    } catch (cobaltErr) {
-        console.warn("High-speed Cobalt download failed, trying browser-side fallback...", cobaltErr);
-        
-        // 2. Fallback to direct download via CORS Proxy
-        progressStatus.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin font-accent"></i> Cobalt busy. Trying browser-side proxy download...`;
-        try {
-            const decoded = atob(formatId);
-            if (decoded.includes('|')) {
-                const parts = decoded.split('|');
-                const directUrl = parts[0];
-                
-                const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(directUrl)}`;
-                const response = await fetch(proxyUrl);
-                if (!response.ok) throw new Error("CORS Proxy failed to fetch");
-                
-                progressFill.style.width = '70%';
-                progressPercent.textContent = 'Saving';
-                progressStatus.innerHTML = `<i class="fa-solid fa-spinner fa-spin font-accent"></i> Assembling file bytes...`;
-                
-                const blob = await response.blob();
-                const blobUrl = URL.createObjectURL(blob);
-                
-                const link = document.createElement('a');
-                link.href = blobUrl;
-                link.download = downloadFilename;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(blobUrl);
-                
-                progressFill.style.width = '100%';
-                progressFill.classList.remove('pulsing-fill');
-                progressPercent.textContent = '100%';
-                progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Download completed successfully!</span>`;
-                showStatus('Download completed successfully!', 'success');
-                toggleDownloadButtons(true);
-                
-                setTimeout(() => {
-                    progressSection.classList.add('hidden');
-                }, 5000);
-                return;
-            } else {
-                throw new Error("Invalid format ID");
-            }
-        } catch (proxyErr) {
-            console.warn("CORS proxy download failed, trying final alternative direct download...", proxyErr);
-            
-            // 3. Last resort fallback: open direct stream link (might open in new tab if blocked by CORS)
-            try {
-                const decoded = atob(formatId);
-                if (decoded.includes('|')) {
-                    const directUrl = decoded.split('|')[0];
-                    
-                    const link = document.createElement('a');
-                    link.href = directUrl;
-                    link.download = downloadFilename;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    
-                    progressFill.style.width = '100%';
-                    progressFill.classList.remove('pulsing-fill');
-                    progressPercent.textContent = '100%';
-                    progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Download triggered! (Alternative stream)</span>`;
-                    showStatus('Download triggered!', 'success');
-                    toggleDownloadButtons(true);
-                    
-                    setTimeout(() => {
-                        progressSection.classList.add('hidden');
-                    }, 5000);
-                    return;
-                }
-            } catch (_) {}
-            
-            // If all failed
-            progressPercent.textContent = 'Failed';
-            progressStatus.innerHTML = `<span style="color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Download failed. Please try a different resolution or format.</span>`;
-            toggleDownloadButtons(true);
-        }
+        setTimeout(() => progressSection.classList.add('hidden'), 5000);
     }
+
+    // Decode the format ID to get the source URL
+    let sourceUrl = null;
+    try {
+        const decoded = atob(formatId);
+        if (decoded.includes('|')) sourceUrl = decoded.split('|')[0];
+    } catch (_) {}
+
+    // ── SMART DETECTION ──────────────────────────────────────────────
+    // If the source URL is already a Cobalt/stream URL (not googlevideo),
+    // download it directly – no API call needed, instant full-speed download!
+    // ─────────────────────────────────────────────────────────────────
+    const isAlreadyStreamUrl = sourceUrl && (
+        !sourceUrl.includes('googlevideo.com') &&
+        !sourceUrl.includes('youtube.com') &&
+        !sourceUrl.includes('ytimg.com') &&
+        sourceUrl.startsWith('http')
+    );
+
+    if (isAlreadyStreamUrl) {
+        progressStatus.innerHTML = `<i class="fa-solid fa-bolt fa-spin font-accent"></i> Stream URL detected — starting instant download...`;
+        progressFill.style.width = '80%';
+        progressPercent.textContent = 'Ready';
+        doDirectDownload(sourceUrl, downloadFilename);
+        return;
+    }
+
+    // ── COBALT API DOWNLOAD ───────────────────────────────────────────
+    // For googlevideo.com URLs (from Invidious/Piped), ask Cobalt to
+    // tunnel/merge them — Cobalt's servers are not blocked by Google
+    // ─────────────────────────────────────────────────────────────────
+    progressStatus.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> Routing through Cobalt high-speed tunnel...`;
+    progressFill.style.width = '40%';
+    progressPercent.textContent = 'Connecting';
+
+    try {
+        const cobaltData = await getCobaltMergedLink(url, qualityLabel, isAudio);
+        doDirectDownload(cobaltData.url, downloadFilename);
+        return;
+    } catch (cobaltErr) {
+        console.warn('Cobalt tunnel failed:', cobaltErr);
+    }
+
+    // ── LAST RESORT: Direct link click ───────────────────────────────
+    // Works for same-origin or open-cors URLs, may open in new tab for
+    // cross-origin streams — but at least it won't buffer forever.
+    // ─────────────────────────────────────────────────────────────────
+    if (sourceUrl) {
+        progressStatus.innerHTML = `<i class="fa-solid fa-arrow-up-right-from-square fa-spin font-accent"></i> Triggering direct stream download...`;
+        doDirectDownload(sourceUrl, downloadFilename);
+        return;
+    }
+
+    progressPercent.textContent = 'Failed';
+    progressFill.classList.remove('pulsing-fill');
+    progressStatus.innerHTML = `<span style="color:#ef4444"><i class="fa-solid fa-triangle-exclamation"></i> Download failed. Please try a different format.</span>`;
+    toggleDownloadButtons(true);
 }
 
 // Secure Server-Side download & merge manager with realtime progress polling
+
 function startServerSideDownload(formatId, ext, qualityLabel, isMerge, downloadFilename) {
     const url = currentVideo.url;
     const progressFill = document.getElementById('progress-bar-fill');
