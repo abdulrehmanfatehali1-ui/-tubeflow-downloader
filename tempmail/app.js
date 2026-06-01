@@ -174,30 +174,46 @@ async function createAccount(prefix = '', domain = '') {
       throw new Error(errData['hydra:description'] || errData.message || 'Failed to create email');
     }
 
-    // 1.5. Introduce a small delay (1200ms) to allow Mail.tm eventual consistency sync
-    await new Promise(resolve => setTimeout(resolve, 1200));
+    // 1.5. Resilient Auth Pipeline: Wait for propagation & retry if database lags
+    let token = '';
+    let loginAttempts = 4;
+    let delayMs = 1500;
 
-    // 2. Fetch JWT Session token (Login)
-    const tokenRes = await fetch(`${API_BASE}/token`, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({ address, password })
-    });
-
-    if (!tokenRes.ok) {
-      let errMsg = 'Failed to authenticate session token';
+    for (let i = 0; i < loginAttempts; i++) {
       try {
-        const errData = await tokenRes.json();
-        errMsg = errData['hydra:description'] || errData.message || errMsg;
-      } catch (e) {}
-      throw new Error(errMsg);
-    }
+        const tokenRes = await fetch(`${API_BASE}/token`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({ address, password })
+        });
 
-    const tokenData = await tokenRes.json();
-    const token = tokenData.token;
+        if (tokenRes.ok) {
+          const tokenData = await tokenRes.json();
+          token = tokenData.token;
+          break; // Authenticated successfully!
+        }
+        
+        // If it's the last attempt, parse the specific error message and throw
+        if (i === loginAttempts - 1) {
+          let errMsg = 'Failed to authenticate session token';
+          try {
+            const errData = await tokenRes.json();
+            errMsg = errData['hydra:description'] || errData.message || errMsg;
+          } catch (e) {}
+          throw new Error(errMsg);
+        }
+      } catch (err) {
+        if (i === loginAttempts - 1) throw err;
+      }
+
+      // Lags detected - Wait and retry with backoff
+      console.warn(`[Auth] Database sync lag detected. Retrying token in ${delayMs}ms (Attempt ${i + 1}/${loginAttempts})...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      delayMs += 1000; // Exponential backoff
+    }
 
     const newAcc = { address, password, token, createdAt: new Date().toISOString() };
     state.accounts.unshift(newAcc);
