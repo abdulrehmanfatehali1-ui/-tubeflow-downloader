@@ -398,27 +398,31 @@ async function extractYouTubeClientSide(url) {
     const videoId = getYouTubeId(url);
     if (!videoId) throw new Error("Could not extract Video ID");
     
+    // Invidious and Piped have native CORS headers - direct fetch works!
+    // DO NOT wrap in corsproxy - it breaks AbortController signal chaining
     const targets = [
         { type: 'invidious', url: `https://invidious.projectsegfau.lt/api/v1/videos/${videoId}` },
         { type: 'invidious', url: `https://invidious.no-logs.com/api/v1/videos/${videoId}` },
         { type: 'invidious', url: `https://inv.tux.im/api/v1/videos/${videoId}` },
         { type: 'invidious', url: `https://yewtu.be/api/v1/videos/${videoId}` },
+        { type: 'invidious', url: `https://invidious.privacyredirect.com/api/v1/videos/${videoId}` },
         { type: 'piped', url: `https://pipedapi.colbyland.org/streams/${videoId}` },
         { type: 'piped', url: `https://pipedapi.kavin.rocks/streams/${videoId}` },
-        { type: 'piped', url: `https://pipedapi.ram.icu/streams/${videoId}` }
+        { type: 'piped', url: `https://pipedapi.ram.icu/streams/${videoId}` },
+        { type: 'piped', url: `https://piped-api.garudalinux.org/streams/${videoId}` }
     ];
     
+    // Add more live instances from the registry (no proxy needed - CORS open)
     try {
-        const regRes = await fetch("https://corsproxy.io/?" + encodeURIComponent("https://api.invidious.io/instances.json?sort_by=type,health"))
-            .catch(() => fetch("https://api.invidious.io/instances.json?sort_by=type,health"));
+        const regRes = await fetch("https://api.invidious.io/instances.json?sort_by=type,health",
+            { signal: AbortSignal.timeout(3000) });
         if (regRes.ok) {
             const regData = await regRes.json();
             let count = 0;
             for (let item of regData) {
-                const domain = item[0];
                 const details = item[1];
-                if (details.type === 'https' && details.api !== false && count < 5) {
-                    const uri = details.uri || `https://${domain}`;
+                if (details.type === 'https' && details.api !== false && count < 6) {
+                    const uri = details.uri || `https://${item[0]}`;
                     targets.push({ type: 'invidious', url: `${uri}/api/v1/videos/${videoId}` });
                     count++;
                 }
@@ -428,101 +432,63 @@ async function extractYouTubeClientSide(url) {
     
     return new Promise((resolve, reject) => {
         let completed = 0;
-        let errors = [];
+        let resolved = false;
         const controllers = [];
         
         targets.forEach(target => {
             const controller = new AbortController();
             controllers.push(controller);
             
-            // Wrap in CORS-proxy to guarantee browser CORS bypass with standard fallback
-            fetch(`https://corsproxy.io/?${encodeURIComponent(target.url)}`, { signal: controller.signal })
-                .catch(() => fetch(target.url, { signal: controller.signal }))
+            // Direct fetch - Invidious/Piped support CORS natively
+            fetch(target.url, { signal: controller.signal })
                 .then(async res => {
+                    if (resolved) return;
                     if (res.ok) {
                         const json = await res.json();
+                        if (resolved) return;
+                        resolved = true;
                         controllers.forEach(c => c.abort());
-                        
                         try {
-                            const parsed = target.type === 'invidious' 
+                            const parsed = target.type === 'invidious'
                                 ? parseInvidiousClientSide(json, url)
                                 : parsePipedClientSide(json, url);
                             resolve(parsed);
-                        } catch (err) {
-                            reject(err);
+                        } catch (parseErr) {
+                            reject(parseErr);
                         }
                     } else {
                         throw new Error(`HTTP ${res.status}`);
                     }
                 })
                 .catch(err => {
-                    if (err.name !== 'AbortError') {
-                        errors.push(err);
-                        completed++;
-                        if (completed >= targets.length) {
-                            // Try Cobalt as the ultimate client-side extraction fallback!
-                            getCobaltMergedLink(url, '720p')
-                                .then(cobaltData => {
-                                    let title = cobaltData.filename || 'Extracted Video';
-                                    if (title.endsWith('.mp4') || title.endsWith('.webm') || title.endsWith('.mkv')) {
-                                        title = title.substring(0, title.lastIndexOf('.'));
-                                    }
-                                    const parsed = {
-                                        title: title,
-                                        author: "TubeFlow Unblockable Bypass",
-                                        thumbnail: "https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=640",
-                                        duration: 0,
-                                        duration_formatted: "Direct Stream",
-                                        views: 5000,
-                                        views_formatted: "5K views",
-                                        description: "Bypassed successfully using client-side dynamic unblockable Cobalt proxy bypass routing.",
-                                        video_formats: [
-                                            {
-                                                format_id: btoa(unescape(encodeURIComponent(`${cobaltData.url}|${title}|mp4`))),
-                                                ext: 'mp4',
-                                                resolution: '720p',
-                                                quality_label: '720p',
-                                                filesize: 0,
-                                                type: 'combined',
-                                                note: 'Direct HD Stream (Bypassed)'
-                                            },
-                                            {
-                                                format_id: btoa(unescape(encodeURIComponent(`${cobaltData.url}|${title}|mp4`))),
-                                                ext: 'mp4',
-                                                resolution: '1080p',
-                                                quality_label: '1080p',
-                                                filesize: 0,
-                                                type: 'combined',
-                                                note: 'Full HD 1080p Stream (Bypassed)'
-                                            }
-                                        ],
-                                        audio_formats: [
-                                            {
-                                                format_id: btoa(unescape(encodeURIComponent(`${cobaltData.url}|${title}|mp3`))),
-                                                ext: 'mp3',
-                                                quality_label: '320kbps',
-                                                filesize: 0,
-                                                type: 'audio',
-                                                note: 'Direct MP3 Audio (Bypassed)'
-                                            }
-                                        ],
-                                        url: url
-                                    };
-                                    resolve(parsed);
-                                })
-                                .catch(cobaltErr => {
-                                    console.error("Client-side Cobalt extraction failed:", cobaltErr);
-                                    reject(new Error("All client-side extraction nodes failed."));
-                                });
-                        }
+                    if (err.name === 'AbortError') return;
+                    completed++;
+                    if (!resolved && completed >= targets.length) {
+                        // All Invidious/Piped failed - try Cobalt as last resort
+                        getCobaltMergedLink(url, '720p')
+                            .then(cobaltData => {
+                                if (resolved) return;
+                                resolved = true;
+                                let title = cobaltData.filename || 'Extracted Video';
+                                if (title.endsWith('.mp4') || title.endsWith('.webm') || title.endsWith('.mkv')) {
+                                    title = title.substring(0, title.lastIndexOf('.'));
+                                }
+                                resolve(buildCobaltResult(url, title, cobaltData.url));
+                            })
+                            .catch(cobaltErr => {
+                                if (!resolved) reject(new Error("All extraction nodes failed."));
+                            });
                     }
                 });
         });
         
+        // 12 second timeout (was 7s - too short for slow nodes)
         setTimeout(() => {
-            controllers.forEach(c => c.abort());
-            reject(new Error("Client-side extraction timed out."));
-        }, 7000);
+            if (!resolved) {
+                controllers.forEach(c => c.abort());
+                reject(new Error("Extraction timed out."));
+            }
+        }, 12000);
     });
 }
 
@@ -551,43 +517,45 @@ async function handleFetch(urlToFetch = null) {
     }
     
     let data = null;
+    const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
 
     // =========================================================
-    // STEP 1: Try Cobalt FIRST (Primary - works for ALL sites,
-    //         never blocked by YouTube/IG/TikTok datacenter IPs)
+    // STEP 1: Browser-side Invidious/Piped (YouTube only)
+    //   - These APIs have native CORS support (no proxy needed)
+    //   - User's IP is never blocked by Google
+    //   - This is what originally worked 100%!
     // =========================================================
-    showStatus('🔥 Activating Cobalt bypass extraction engine...', 'loading');
-    try {
-        const cobaltData = await getCobaltMergedLink(url, '720p');
-        let title = cobaltData.filename || 'Extracted Video';
-        if (title.endsWith('.mp4') || title.endsWith('.webm') || title.endsWith('.mkv')) {
-            title = title.substring(0, title.lastIndexOf('.'));
+    if (isYouTube) {
+        showStatus('Bypassing YouTube via browser-side Invidious/Piped nodes...', 'loading');
+        try {
+            data = await extractYouTubeClientSide(url);
+        } catch (clientErr) {
+            console.warn("Invidious/Piped extraction failed, trying Cobalt...", clientErr);
         }
-        data = buildCobaltResult(url, title, cobaltData.url);
-    } catch (cobaltErr) {
-        console.warn("Cobalt primary extraction failed, trying Invidious/Piped...", cobaltErr);
     }
 
     // =========================================================
-    // STEP 2: If Cobalt failed, try Invidious/Piped (YouTube only)
+    // STEP 2: Cobalt bypass (works for ALL platforms)
     // =========================================================
     if (!data) {
-        const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
-        if (isYouTube) {
-            showStatus('Trying Invidious/Piped bypass nodes...', 'loading');
-            try {
-                data = await extractYouTubeClientSide(url);
-            } catch (clientErr) {
-                console.warn("Invidious/Piped extraction failed, trying server:", clientErr);
+        showStatus('Activating Cobalt bypass extraction engine...', 'loading');
+        try {
+            const cobaltData = await getCobaltMergedLink(url, '720p');
+            let title = cobaltData.filename || 'Extracted Video';
+            if (title.endsWith('.mp4') || title.endsWith('.webm') || title.endsWith('.mkv')) {
+                title = title.substring(0, title.lastIndexOf('.'));
             }
+            data = buildCobaltResult(url, title, cobaltData.url);
+        } catch (cobaltErr) {
+            console.warn("Cobalt extraction failed, trying server...", cobaltErr);
         }
     }
 
     // =========================================================
-    // STEP 3: Last resort - server-side extraction via /api/info
+    // STEP 3: Server /api/info (absolute last resort)
     // =========================================================
     if (!data) {
-        showStatus('Connecting to server extraction node...', 'loading');
+        showStatus('Trying server extraction...', 'loading');
         try {
             const response = await fetch(`/api/info?url=${encodeURIComponent(url)}`);
             const serverData = await response.json();
@@ -597,7 +565,7 @@ async function handleFetch(urlToFetch = null) {
             data = serverData;
         } catch (serverErr) {
             console.error("All extraction methods failed:", serverErr);
-            showStatus(`❌ Extraction failed. Please check your URL or try again in a moment.`, 'error');
+            showStatus(`Extraction failed on all nodes. Please try again.`, 'error');
             setLoading(false);
             return;
         }
