@@ -706,6 +706,7 @@ function toggleDownloadButtons(enabled) {
             btn.style.cursor = 'pointer';
         }
     });
+}
 // Client-Side high-resolution video + audio merger using public Cobalt APIs
 async function getCobaltMergedLink(videoUrl, qualityLabel, isAudio = false) {
     const instances = [
@@ -758,68 +759,6 @@ async function getCobaltMergedLink(videoUrl, qualityLabel, isAudio = false) {
 async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     if (!currentVideo) return;
     
-    const isCombined = formatType === 'combined' || qualityLabel === 'Audio';
-    
-    if (isCombined) {
-        try {
-            const decoded = atob(formatId);
-            if (decoded.includes('|')) {
-                const parts = decoded.split('|');
-                const directUrl = parts[0];
-                const title = parts[1] || 'video';
-                const downloadFilename = `${title.replace(/[\\/*?:"<>|]/g, '')}_${qualityLabel}.${ext}`;
-                
-                showStatus('Downloading file directly to your browser (100% bypass)... Please wait.', 'loading');
-                
-                // Show Progress Bar
-                progressSection.classList.remove('hidden');
-                progressSection.scrollIntoView({ behavior: 'smooth', block: 'end' });
-                
-                const progressFill = document.getElementById('progress-bar-fill');
-                const progressPercent = document.getElementById('progress-percent');
-                const progressStatus = document.getElementById('progress-status');
-                const progressFileLabel = document.getElementById('progress-filename');
-                
-                progressFileLabel.textContent = downloadFilename;
-                progressFill.style.width = '30%';
-                progressFill.classList.add('pulsing-fill');
-                progressPercent.textContent = 'Buffering';
-                progressStatus.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin font-accent"></i> Streaming file bytes directly in same tab...`;
-                
-                try {
-                    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(directUrl)}`;
-                    const response = await fetch(proxyUrl);
-                    if (!response.ok) throw new Error("CORS Proxy failed");
-                    
-                    progressFill.style.width = '70%';
-                    progressPercent.textContent = 'Saving';
-                    progressStatus.innerHTML = `<i class="fa-solid fa-spinner fa-spin font-accent"></i> Assembling file bytes...`;
-                    
-                    const blob = await response.blob();
-                    const blobUrl = URL.createObjectURL(blob);
-                    
-                    const link = document.createElement('a');
-                    link.href = blobUrl;
-                    link.download = downloadFilename;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    URL.revokeObjectURL(blobUrl);
-                    
-                    progressFill.style.width = '100%';
-                    progressFill.classList.remove('pulsing-fill');
-                    progressPercent.textContent = '100%';
-                    progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Download completed successfully in same tab!</span>`;
-                    showStatus('Download completed successfully!', 'success');
-                    
-                    setTimeout(() => {
-                        progressSection.classList.add('hidden');
-                    }, 5000);
-                    return;
-                } catch (err) {
-                    console.warn("CORS blob download failed, falling back to direct tab:", err);
-                    window.open(directUrl, '_blank');
-                    progressSection.classList.add('hidden');
     // Clear any existing active download intervals
     if (activeDownloadInterval) {
         clearInterval(activeDownloadInterval);
@@ -864,7 +803,7 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
                 
                 const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(directUrl)}`;
                 const response = await fetch(proxyUrl);
-                if (!response.ok) throw new Error("CORS Proxy failed");
+                if (!response.ok) throw new Error("CORS Proxy failed to fetch");
                 
                 progressFill.style.width = '70%';
                 progressPercent.textContent = 'Saving';
@@ -894,17 +833,8 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
                 return;
             }
         } catch (err) {
-            console.warn("Client-side direct download failed, falling back to direct tab:", err);
-            try {
-                const decoded = atob(formatId);
-                if (decoded.includes('|')) {
-                    const directUrl = decoded.split('|')[0];
-                    window.open(directUrl, '_blank');
-                }
-            } catch (_) {}
-            progressSection.classList.add('hidden');
-            showStatus('Download opened in a new tab at full speed!', 'success');
-            toggleDownloadButtons(true);
+            console.warn("Client-side direct download failed, falling back to secure server-side download:", err);
+            startServerSideDownload(formatId, ext, qualityLabel, false, downloadFilename);
             return;
         }
     }
@@ -952,12 +882,99 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
             }, 5000);
             return;
         } catch (err) {
-            console.error("Client-side HD merge failed:", err);
-            progressPercent.textContent = 'Failed';
-            progressStatus.innerHTML = `<span style="color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> HD Merge failed. Server is blocked.<br>Please select a standard <b>Direct (Combined)</b> format for instant download.</span>`;
-            toggleDownloadButtons(true);
+            console.warn("Client-side HD merge failed, falling back to secure server-side download & merge:", err);
+            startServerSideDownload(formatId, ext, qualityLabel, true, downloadFilename);
             return;
         }
+    }
+}
+
+// Secure Server-Side download & merge manager with realtime progress polling
+function startServerSideDownload(formatId, ext, qualityLabel, isMerge, downloadFilename) {
+    const url = currentVideo.url;
+    const progressFill = document.getElementById('progress-bar-fill');
+    const progressPercent = document.getElementById('progress-percent');
+    const progressStatus = document.getElementById('progress-status');
+    
+    progressStatus.innerHTML = `<i class="fa-solid fa-server fa-spin font-accent"></i> Initializing secure server bypass connection...`;
+    
+    // We request `/api/download/start?url=...&format_id=...`
+    const startUrl = `/api/download/start?url=${encodeURIComponent(url)}&format_id=${encodeURIComponent(formatId)}`;
+    
+    fetch(startUrl)
+        .then(res => {
+            if (!res.ok) throw new Error("Server bypass connection could not be established");
+            return res.json();
+        })
+        .then(data => {
+            if (data.error) throw new Error(data.error);
+            const taskId = data.task_id;
+            
+            activeDownloadInterval = setInterval(() => {
+                fetch(`/api/download/progress?task_id=${taskId}`)
+                    .then(res => {
+                        if (!res.ok) throw new Error("Progress connection lost");
+                        return res.json();
+                    })
+                    .then(progress => {
+                        if (progress.status === 'starting') {
+                            progressFill.style.width = '10%';
+                            progressPercent.textContent = '10%';
+                            progressStatus.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin font-accent"></i> ${progress.msg || 'Connecting...'}`;
+                        } else if (progress.status === 'downloading') {
+                            const pct = progress.percent || 0;
+                            const mappedPct = Math.min(80, Math.round(pct * 0.8));
+                            progressFill.style.width = `${mappedPct}%`;
+                            progressPercent.textContent = `${pct}%`;
+                            progressStatus.innerHTML = `<i class="fa-solid fa-spinner fa-spin font-accent"></i> ${progress.msg || 'Streaming file...'}`;
+                        } else if (progress.status === 'merging') {
+                            progressFill.style.width = '90%';
+                            progressPercent.textContent = '95%';
+                            progressStatus.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> Merging high-definition tracks with FFmpeg on server...`;
+                        } else if (progress.status === 'completed') {
+                            clearInterval(activeDownloadInterval);
+                            activeDownloadInterval = null;
+                            
+                            progressFill.style.width = '100%';
+                            progressPercent.textContent = '100%';
+                            progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Processing complete! Delivering file in same tab...</span>`;
+                            
+                            const downloadUrl = `/api/download/get?task_id=${taskId}`;
+                            
+                            const link = document.createElement('a');
+                            link.href = downloadUrl;
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                            
+                            showStatus('Download completed successfully!', 'success');
+                            toggleDownloadButtons(true);
+                            
+                            setTimeout(() => {
+                                progressSection.classList.add('hidden');
+                            }, 8000);
+                        } else if (progress.status === 'error') {
+                            clearInterval(activeDownloadInterval);
+                            activeDownloadInterval = null;
+                            throw new Error(progress.msg || "An error occurred on the download server.");
+                        }
+                    })
+                    .catch(err => {
+                        clearInterval(activeDownloadInterval);
+                        activeDownloadInterval = null;
+                        handleDownloadFailure(err.message || "Bypass connection interrupted.");
+                    });
+            }, 1000);
+        })
+        .catch(err => {
+            handleDownloadFailure(err.message || "Bypass routing failed.");
+        });
+        
+    function handleDownloadFailure(errorMsg) {
+        console.error("Server-side download error:", errorMsg);
+        progressPercent.textContent = 'Failed';
+        progressStatus.innerHTML = `<span style="color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Bypass Failed: ${errorMsg}<br>Please select a standard <b>Direct (Combined)</b> format for instant download.</span>`;
+        toggleDownloadButtons(true);
     }
 }
 
