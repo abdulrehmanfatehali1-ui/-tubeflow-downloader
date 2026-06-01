@@ -19,6 +19,23 @@ except Exception as e:
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 
+# Helper to generate yt-dlp options with browser impersonation to bypass cloud blocking / SSL unexpected EOF
+def get_ydl_opts(extra_opts=None):
+    opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'nocheckcertificate': True,
+    }
+    try:
+        from yt_dlp.networking.impersonate import ImpersonateTarget
+        opts['impersonate'] = ImpersonateTarget.from_str('chrome')
+    except Exception:
+        pass
+    
+    if extra_opts:
+        opts.update(extra_opts)
+    return opts
+
 # Global Task Registry to hold live download states
 # Structure: { task_id: { 'status': '...', 'percent': 0, 'speed': '...', 'eta': 0, 'msg': '...', 'filepath': '...', 'filename': '...', 'created_at': 0 } }
 DOWNLOAD_TASKS = {}
@@ -89,11 +106,7 @@ def get_info():
         return jsonify({'error': 'URL is required'}), 400
     
     try:
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
-            'extract_flat': False,
-        }
+        ydl_opts = get_ydl_opts({'extract_flat': False})
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             
@@ -296,26 +309,22 @@ def async_download_worker(url, format_id, task_id, title, is_merge):
         
         # Setup specific options
         if is_merge:
-            ydl_opts = {
+            ydl_opts = get_ydl_opts({
                 'format': f"{format_id}+bestaudio[ext=m4a]/bestaudio",
                 'outtmpl': outtmpl,
-                'quiet': True,
-                'no_warnings': True,
                 'progress_hooks': [make_progress_hook(task_id)],
                 'merge_output_format': 'mp4',
                 'postprocessor_args': {
                     'ffmpeg': ['-c:a', 'aac']
                 }
-            }
+            })
         else:
             # For combined or audio-only, direct download is faster via yt-dlp
-            ydl_opts = {
+            ydl_opts = get_ydl_opts({
                 'format': format_id,
                 'outtmpl': outtmpl,
-                'quiet': True,
-                'no_warnings': True,
                 'progress_hooks': [make_progress_hook(task_id)]
-            }
+            })
             
         if ffmpeg_dir:
             ydl_opts['ffmpeg_location'] = ffmpeg_dir
@@ -328,7 +337,7 @@ def async_download_worker(url, format_id, task_id, title, is_merge):
         ext = 'mp4'
         if not is_merge:
             # Check format details to find extension
-            with yt_dlp.YoutubeDL({'quiet':True}) as ydl_info:
+            with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl_info:
                 res_info = ydl_info.extract_info(url, download=False)
                 for f in res_info.get('formats', []):
                     if f.get('format_id') == format_id:
@@ -381,7 +390,7 @@ def start_async_download():
         return jsonify({'error': 'URL and format_id are required'}), 400
         
     try:
-        ydl_opts = {'quiet': True, 'no_warnings': True}
+        ydl_opts = get_ydl_opts()
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             
