@@ -57,13 +57,23 @@ def get_ydl_opts(extra_opts=None):
 DOWNLOAD_TASKS = {}
 tasks_lock = threading.Lock()
 
-# List of public stable Invidious instances to fetch YouTube metadata when yt-dlp is blocked
+# List of public stable Invidious and Piped instances to fetch YouTube metadata when yt-dlp is blocked
 INVIDIOUS_INSTANCES = [
     'https://invidious.projectsegfau.lt',
     'https://yewtu.be',
     'https://inv.tux.im',
     'https://invidious.nerdvpn.de',
-    'https://invidious.jing.rocks'
+    'https://invidious.jing.rocks',
+    'https://invidious.no-logs.com',
+    'https://invidious.privacydev.net'
+]
+
+PIPED_INSTANCES = [
+    'https://pipedapi.kavin.rocks',
+    'https://pipedapi.colbyland.org',
+    'https://api.piped.yt',
+    'https://pipedapi.smnz.de',
+    'https://piped-api.lunar.icu'
 ]
 
 # Helper to extract 11-character YouTube video ID
@@ -76,28 +86,52 @@ def extract_youtube_id(url):
 def query_single_invidious(instance, video_id):
     try:
         api_url = f"{instance}/api/v1/videos/{video_id}"
-        response = requests.get(api_url, timeout=3.5)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        response = requests.get(api_url, headers=headers, timeout=3.5)
         if response.status_code == 200:
             data = response.json()
             if data and 'title' in data:
-                return data, instance
+                return {'source': 'invidious', 'data': data, 'instance': instance}
     except Exception:
         pass
-    return None, None
+    return None
 
-def fetch_youtube_via_invidious(url):
+# Fallback function to extract YouTube metadata via public Piped API
+def query_single_piped(instance, video_id):
+    try:
+        api_url = f"{instance}/streams/{video_id}"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        response = requests.get(api_url, headers=headers, timeout=3.5)
+        if response.status_code == 200:
+            data = response.json()
+            if data and 'title' in data:
+                return {'source': 'piped', 'data': data, 'instance': instance}
+    except Exception:
+        pass
+    return None
+
+def fetch_youtube_via_fallback_apis(url):
     video_id = extract_youtube_id(url)
     if not video_id:
-        return None, None
+        return None
         
-    # Query all instances concurrently via ThreadPoolExecutor for sub-second speeds!
-    with ThreadPoolExecutor(max_workers=len(INVIDIOUS_INSTANCES)) as executor:
-        futures = [executor.submit(query_single_invidious, inst, video_id) for inst in INVIDIOUS_INSTANCES]
+    # Query all Invidious and Piped instances concurrently for sub-second responses!
+    with ThreadPoolExecutor(max_workers=len(INVIDIOUS_INSTANCES) + len(PIPED_INSTANCES)) as executor:
+        futures = []
+        for inst in INVIDIOUS_INSTANCES:
+            futures.append(executor.submit(query_single_invidious, inst, video_id))
+        for inst in PIPED_INSTANCES:
+            futures.append(executor.submit(query_single_piped, inst, video_id))
+            
         for future in as_completed(futures):
-            data, instance = future.result()
-            if data:
-                return data, instance
-    return None, None
+            res = future.result()
+            if res:
+                return res
+    return None
 
 # Mapper to translate Invidious JSON payload to TubeFlow Ultimate UI schema
 def parse_invidious_info(data, url):
@@ -166,6 +200,76 @@ def parse_invidious_info(data, url):
             })
             
     # Sort video formats
+    def get_height(x):
+        label = x['quality_label']
+        m = re.search(r'(\d+)', label)
+        return int(m.group(1)) if m else 0
+    video_formats.sort(key=get_height, reverse=True)
+    
+    return {
+        'title': title,
+        'author': author,
+        'thumbnail': thumbnail,
+        'duration': duration,
+        'duration_formatted': format_duration(duration),
+        'views': views,
+        'views_formatted': format_views(views),
+        'description': description,
+        'video_formats': video_formats,
+        'audio_formats': audio_formats,
+        'url': url
+    }
+
+# Mapper to translate Piped JSON payload to TubeFlow Ultimate UI schema
+def parse_piped_info(data, url):
+    title = data.get('title', 'Unknown Video')
+    author = data.get('uploader', 'Unknown Creator')
+    thumbnail = data.get('thumbnailUrl', '')
+    duration = data.get('duration', 0)
+    views = data.get('views', 0)
+    description = data.get('description', '')[:300] + '...'
+    
+    video_formats = []
+    audio_formats = []
+    
+    # Process Piped videoStreams
+    for f in data.get('videoStreams', []):
+        mime = f.get('mimeType', '')
+        ext = 'mp4' if 'video/mp4' in mime else 'webm'
+        quality = f.get('quality', '360p')
+        
+        payload = f"{f.get('url')}|{title}|{ext}"
+        encoded_id = base64.b64encode(payload.encode('utf-8')).decode('utf-8')
+        
+        video_formats.append({
+            'format_id': encoded_id,
+            'ext': ext,
+            'resolution': quality,
+            'quality_label': quality,
+            'filesize': int(f.get('bitrate', 0) * duration // 8) or 0,
+            'type': 'combined',
+            'note': "Direct Video"
+        })
+        
+    # Process Piped audioStreams
+    for f in data.get('audioStreams', []):
+        mime = f.get('mimeType', '')
+        ext = 'm4a' if 'audio/mp4' in mime else 'webm'
+        quality = f.get('quality', 'High Quality')
+        bitrate = int(f.get('bitrate', 0)) // 1000
+        
+        payload = f"{f.get('url')}|{title}|{ext}"
+        encoded_id = base64.b64encode(payload.encode('utf-8')).decode('utf-8')
+        
+        audio_formats.append({
+            'format_id': encoded_id,
+            'ext': ext,
+            'quality_label': f"{bitrate}kbps" if bitrate else quality,
+            'filesize': int(f.get('bitrate', 0) * duration // 8) or 0,
+            'type': 'audio',
+            'note': f"Audio only ({ext.upper()})"
+        })
+        
     def get_height(x):
         label = x['quality_label']
         m = re.search(r'(\d+)', label)
@@ -328,12 +432,18 @@ def get_info():
                 print(f"TubeFlow: Standard fallback extraction failed ({str(e2)}).")
             
         if not info:
-            # Fallback to Invidious API to bypass the datacenter IP bot block!
-            print("TubeFlow: yt-dlp blocked. Triggering Invidious API fallback...")
-            invidious_data, instance = fetch_youtube_via_invidious(url)
-            if invidious_data:
-                print(f"TubeFlow: Successfully extracted details via Invidious instance: {instance}")
-                parsed_res = parse_invidious_info(invidious_data, url)
+            # Fallback to Invidious & Piped APIs to bypass the datacenter IP bot block!
+            print("TubeFlow: yt-dlp blocked. Triggering Invidious/Piped APIs fallback...")
+            fallback_res = fetch_youtube_via_fallback_apis(url)
+            if fallback_res:
+                source = fallback_res['source']
+                data = fallback_res['data']
+                instance = fallback_res['instance']
+                print(f"TubeFlow: Successfully extracted details via fallback {source} instance: {instance}")
+                if source == 'invidious':
+                    parsed_res = parse_invidious_info(data, url)
+                else:
+                    parsed_res = parse_piped_info(data, url)
                 return jsonify(parsed_res)
             else:
                 return jsonify({'error': 'Could not extract video information. YouTube is actively blocking this server IP. Please try again in a few minutes.'}), 400
