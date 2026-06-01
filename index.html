@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TubeFlow Ultimate - Multi-Platform Video Downloader</title>
+    <meta name="description" content="Download high-quality videos from YouTube, TikTok, Instagram and Facebook instantly with TubeFlow.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;700&display=swap');
+:root{--font-heading:'Space Grotesk',sans-serif;--font-body:'Outfit',sans-serif;--bg-base:#060813;--bg-surface:rgba(10,15,30,0.6);--border-color:rgba(255,255,255,0.06);--border-hover:rgba(255,255,255,0.16);--text-main:#f8fafc;--text-muted:#94a3b8;--glass-blur:blur(25px);--card-shadow:0 20px 50px -15px rgba(0,0,0,0.7);--transition:all 0.5s cubic-bezier(0.4,0,0.2,1);--radius-sm:10px;--radius-md:16px;--radius-lg:24px}
+.theme-youtube{--primary-color:#ff0000;--primary-glow:rgba(255,0,0,0.35);--accent-color:#00F2FE;--accent-glow:rgba(0,242,254,0.25);--theme-gradient:linear-gradient(135deg,#ff0055,#ff0000)}
+.theme-instagram{--primary-color:#d62976;--primary-glow:rgba(214,41,118,0.35);--accent-color:#f77737;--accent-glow:rgba(247,119,55,0.25);--theme-gradient:linear-gradient(135deg,#8a3ab9,#e95950,#fccc63)}
+.theme-tiktok{--primary-color:#00f2fe;--primary-glow:rgba(0,242,254,0.35);--accent-color:#fe2c55;--accent-glow:rgba(254,44,85,0.25);--theme-gradient:linear-gradient(135deg,#00f2fe,#fe2c55)}
+.theme-facebook{--primary-color:#1877f2;--primary-glow:rgba(24,119,242,0.35);--accent-color:#00e5ff;--accent-glow:rgba(0,229,255,0.25);--theme-gradient:linear-gradient(135deg,#1877f2,#0056b3)}
+.theme-universal{--primary-color:#f72585;--primary-glow:rgba(247,37,133,0.35);--accent-color:#7209b7;--accent-glow:rgba(114,9,183,0.25);--theme-gradient:linear-gradient(135deg,#f72585,#7209b7,#3f37c9,#4cc9f0)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background-color:var(--bg-base);color:var(--text-main);font-family:var(--font-body);min-height:100vh;display:flex;justify-content:center;overflow-x:hidden;position:relative;line-height:1.6;transition:background-color 0.8s ease}
+.glow-orb{position:absolute;width:500px;height:500px;border-radius:50%;filter:blur(140px);z-index:-1;opacity:.35;pointer-events:none;transition:var(--transition)}
+.orb-1{top:-120px;left:-120px;background:radial-gradient(circle,var(--primary-color) 0%,transparent 70%);animation:orbMove1 25s infinite alternate ease-in-out}
+.orb-2{bottom:-120px;right:-120px;background:radial-gradient(circle,var(--accent-color) 0%,transparent 70%);animation:orbMove2 25s infinite alternate ease-in-out}
+.orb-3{top:40%;left:30%;width:350px;height:350px;background:radial-gradient(circle,var(--primary-color) 0%,transparent 75%);animation:orbMove3 30s infinite alternate ease-in-out;opacity:.2}
+@keyframes orbMove1{0%{transform:translate(0,0) scale(1)}100%{transform:translate(200px,150px) scale(1.3)}}
+@keyframes orbMove2{0%{transform:translate(0,0) scale(1.3)}100%{transform:translate(-200px,-150px) scale(0.8)}}
+@keyframes orbMove3{0%{transform:translate(0,0) scale(0.9)}100%{transform:translate(100px,-80px) scale(1.2)}}
+.app-container{width:100%;max-width:1000px;padding:3rem 1.5rem;display:flex;flex-direction:column;gap:2.2rem;position:relative;z-index:10}
+.app-header{text-align:center;margin-bottom:.5rem}
+.logo-area{display:inline-flex;align-items:center;gap:.85rem;margin-bottom:.5rem}
+.logo-icon{background:var(--theme-gradient);width:54px;height:54px;border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;font-size:1.6rem;color:#fff;box-shadow:0 8px 30px var(--primary-glow);animation:logoGlow 3s infinite alternate;transition:var(--transition)}
+@keyframes logoGlow{0%{transform:scale(1);box-shadow:0 0 15px var(--primary-glow)}100%{transform:scale(1.05);box-shadow:0 0 35px var(--accent-glow)}}
+#logo-text{font-family:var(--font-heading);font-size:2.8rem;font-weight:800;letter-spacing:-1.5px;color:#fff}
+#logo-text span{background:var(--theme-gradient);-webkit-background-clip:text;-webkit-text-fill-color:transparent;transition:var(--transition)}
+.badge-hq{font-size:.75rem;font-weight:900;letter-spacing:2px;padding:.2rem .6rem;border-radius:6px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);vertical-align:middle;margin-left:.5rem}
+.tagline{font-size:1.15rem;color:var(--text-muted);font-weight:300;letter-spacing:.5px}
+.platform-tabs{display:grid;grid-template-columns:repeat(5,1fr);background:rgba(10,15,30,0.4);border:1px solid var(--border-color);border-radius:var(--radius-md);padding:.45rem;backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);box-shadow:0 10px 30px rgba(0,0,0,0.4);gap:.5rem}
+.platform-tab{background:transparent;border:none;font-family:var(--font-heading);font-weight:700;font-size:1rem;padding:1rem 1.25rem;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.75rem;color:var(--text-muted);transition:var(--transition)}
+.icon-platform{font-size:1.3rem}
+.platform-tab.btn-yt:hover{color:#ff0000;background:rgba(255,0,0,0.05)}
+.platform-tab.btn-yt.active{background:#ff0000;color:#fff;box-shadow:0 0 20px rgba(255,0,0,0.35)}
+.platform-tab.btn-ig:hover{color:#d62976;background:rgba(214,41,118,0.05)}
+.platform-tab.btn-ig.active{background:linear-gradient(45deg,#f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%);color:#fff;box-shadow:0 0 25px rgba(214,41,118,0.4)}
+.platform-tab.btn-tt:hover{color:#00f2fe;background:rgba(0,242,254,0.05)}
+.platform-tab.btn-tt.active{background:#0c101b;color:#00f2fe;border:1.5px solid #00f2fe;box-shadow:0 0 20px rgba(0,242,254,0.3)}
+.platform-tab.btn-fb:hover{color:#1877f2;background:rgba(24,119,242,0.05)}
+.platform-tab.btn-fb.active{background:#1877f2;color:#fff;box-shadow:0 0 20px rgba(24,119,242,0.35)}
+.platform-tab.btn-uni:hover{color:#f72585;background:rgba(247,37,133,0.05)}
+.platform-tab.btn-uni.active{background:linear-gradient(135deg,#f72585,#7209b7,#4cc9f0);color:#fff;box-shadow:0 0 20px rgba(247,37,133,0.35)}
+@keyframes bounceIcon{0%,100%{transform:scale(1)}50%{transform:scale(1.25)}}
+.card{background:var(--bg-surface);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--border-color);border-radius:var(--radius-lg);padding:2.2rem;box-shadow:var(--card-shadow);position:relative;overflow:hidden;transition:var(--transition)}
+.card:hover{border-color:rgba(255,255,255,0.15);box-shadow:0 25px 60px -10px rgba(0,0,0,0.8)}
+.card-accent-glow{position:absolute;top:0;left:0;width:100%;height:4px;background:var(--theme-gradient);transition:var(--transition)}
+.header-card-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem}
+.section-title{font-family:var(--font-heading);font-size:1.55rem;font-weight:700;display:flex;align-items:center;gap:.85rem;color:#fff}
+.font-accent{color:var(--primary-color);transition:var(--transition)}
+.active-badge{background:rgba(255,255,255,0.06);border:1px solid var(--border-color);padding:.35rem .85rem;border-radius:30px;font-size:.8rem;font-weight:700;letter-spacing:.5px;color:var(--primary-color);transition:var(--transition)}
+.section-desc{color:var(--text-muted);font-size:.98rem;margin-bottom:1.8rem}
+.input-group{display:flex;gap:.85rem;width:100%}
+.input-wrapper{position:relative;flex-grow:1;display:flex;align-items:center}
+.input-icon{position:absolute;left:1.4rem;font-size:1.4rem;color:var(--primary-color);pointer-events:none;transition:var(--transition)}
+#youtube-url{width:100%;background:rgba(0,0,0,0.45);border:1.5px solid var(--border-color);border-radius:var(--radius-md);padding:1.25rem 3rem 1.25rem 3.4rem;font-size:1rem;color:#fff;font-family:var(--font-body);transition:var(--transition);letter-spacing:.3px}
+#youtube-url::placeholder{color:rgba(255,255,255,0.25)}
+#youtube-url:focus{outline:none;border-color:var(--primary-color);box-shadow:0 0 25px var(--primary-glow);background:rgba(0,0,0,0.6)}
+.clear-input-btn{position:absolute;right:1.4rem;background:transparent;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;padding:.25rem;display:none;transition:var(--transition)}
+.clear-input-btn:hover{color:#fff;transform:scale(1.15)}
+.btn{font-family:var(--font-heading);font-weight:700;font-size:1rem;padding:1.1rem 2.2rem;border-radius:var(--radius-md);border:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:.65rem;transition:var(--transition);box-shadow:0 4px 15px rgba(0,0,0,0.4)}
+.btn-primary{background:var(--theme-gradient);color:#fff}
+.btn-primary:hover{transform:translateY(-3px);box-shadow:0 10px 25px var(--primary-glow);filter:brightness(1.15)}
+.btn-secondary{background:rgba(255,255,255,0.05);border:1px solid var(--border-color);color:var(--text-main)}
+.btn-secondary:hover{background:rgba(255,255,255,0.12);border-color:var(--border-hover);color:#fff}
+.btn-sm{padding:.6rem 1.2rem;font-size:.85rem;border-radius:var(--radius-sm)}
+.hidden{display:none!important}
+.status-msg{margin-top:1.2rem;padding:1rem 1.4rem;border-radius:var(--radius-md);font-size:.95rem;font-weight:500;display:flex;align-items:center;gap:.85rem;animation:slideIn .35s cubic-bezier(0.4,0,0.2,1) forwards}
+.status-msg.error{background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.25);color:#fca5a5}
+.status-msg.success{background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.25);color:#a7f3d0}
+.status-msg.loading{background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.25);color:#bfdbfe}
+.results-section{animation:fadeInSlide .6s cubic-bezier(0.4,0,0.2,1) forwards}
+.video-details-grid{display:grid;grid-template-columns:1fr 1.2fr;gap:2.5rem}
+.video-preview-pane{display:flex;flex-direction:column;gap:1.4rem}
+.thumbnail-wrapper{position:relative;width:100%;max-height:280px;height:280px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);border-radius:var(--radius-md);overflow:hidden;border:1px solid var(--border-color);box-shadow:0 15px 35px rgba(0,0,0,0.5)}
+.thumbnail-wrapper img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;transition:var(--transition)}
+.thumbnail-wrapper:hover img{transform:scale(1.03)}
+.badge-duration{position:absolute;bottom:.85rem;right:.85rem;background:rgba(0,0,0,0.8);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.15);color:#fff;font-size:.8rem;font-weight:800;padding:.25rem .6rem;border-radius:6px;letter-spacing:.5px}
+.video-meta-text{display:flex;flex-direction:column;gap:.7rem}
+.video-title{font-family:var(--font-heading);font-size:1.35rem;font-weight:700;color:#fff;line-height:1.4;word-break:break-word}
+.meta-row{display:flex;flex-wrap:wrap;gap:1.2rem;font-size:.88rem;color:var(--text-muted)}
+.meta-item{display:flex;align-items:center;gap:.45rem}
+.author-tag{color:var(--primary-color);font-weight:600;transition:var(--transition)}
+.video-description{font-size:.88rem;color:var(--text-muted);background:rgba(0,0,0,0.25);border-radius:var(--radius-sm);padding:.85rem 1.2rem;max-height:95px;overflow-y:auto;border:1px solid rgba(255,255,255,0.03)}
+.download-formats-pane{display:flex;flex-direction:column;gap:1.4rem}
+.tabs-container{display:flex;background:rgba(0,0,0,0.35);border:1px solid var(--border-color);border-radius:var(--radius-md);padding:.4rem;width:100%}
+.tab-btn{flex-grow:1;background:transparent;border:none;color:var(--text-muted);font-family:var(--font-heading);font-weight:700;font-size:.95rem;padding:.85rem 1.2rem;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.6rem;transition:var(--transition)}
+.tab-btn.active{background:rgba(255,255,255,0.07);color:#fff;box-shadow:0 5px 15px rgba(0,0,0,0.3);border:1.5px solid rgba(255,255,255,0.06)}
+.tab-pane{display:none;flex-direction:column;gap:.85rem;animation:fadeIn .4s ease-out forwards}
+.tab-pane.active{display:flex}
+.pane-help{font-size:.88rem;color:var(--text-muted);margin-bottom:.2rem}
+.formats-list{display:flex;flex-direction:column;gap:.75rem;max-height:310px;overflow-y:auto;padding-right:.25rem}
+.formats-list::-webkit-scrollbar{width:6px}
+.formats-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:10px}
+.format-card{background:rgba(255,255,255,0.02);border:1px solid var(--border-color);border-radius:var(--radius-md);padding:.95rem 1.4rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;transition:var(--transition)}
+.format-card:hover{background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.14);transform:translateX(5px)}
+.format-info-left{display:flex;align-items:center;gap:1rem}
+.format-badge{background:rgba(255,255,255,0.07);border:1px solid var(--border-color);color:#fff;padding:.35rem .75rem;border-radius:var(--radius-sm);font-size:.8rem;font-weight:800;min-width:65px;text-align:center;transition:var(--transition)}
+.format-badge.high-quality{background:rgba(16,185,129,0.12);border-color:rgba(16,185,129,0.25);color:#34d399}
+.format-badge.no-audio{background:rgba(245,158,11,0.08);border-color:rgba(245,158,11,0.2);color:#fbbf24}
+.format-meta-details{display:flex;flex-direction:column}
+.format-label-title{font-weight:600;font-size:1rem;color:#fff}
+.format-subtext{font-size:.83rem;color:var(--text-muted);margin-top:.15rem}
+.btn-download{background:rgba(255,255,255,0.04);border:1px solid var(--border-color);color:#fff;width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:1rem;transition:var(--transition)}
+.format-card:hover .btn-download{background:var(--theme-gradient);border-color:transparent;color:#fff;box-shadow:0 0 15px var(--primary-glow);transform:scale(1.15)}
+.progress-section{animation:slideIn .35s cubic-bezier(0.4,0,0.2,1) forwards}
+.progress-container{display:flex;flex-direction:column;gap:.95rem}
+.progress-header{display:flex;justify-content:space-between;align-items:center;gap:1rem}
+.progress-title{font-family:var(--font-heading);font-weight:700;font-size:1.15rem;color:#fff;display:flex;align-items:center;gap:.5rem}
+.progress-filename{font-size:.88rem;color:var(--text-muted);max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right}
+.progress-bar-wrapper{width:100%;height:10px;background:rgba(0,0,0,0.5);border-radius:var(--radius-sm);overflow:hidden;position:relative;border:1px solid var(--border-color)}
+.progress-bar-fill{height:100%;width:0%;background:var(--theme-gradient);border-radius:var(--radius-sm);box-shadow:0 0 10px var(--primary-glow);transition:width .25s ease-out}
+.progress-bar-fill.pulsing-fill{background:linear-gradient(270deg,var(--primary-color),var(--accent-color),var(--primary-color));background-size:200% 200%;animation:gradientShift 1.2s ease infinite}
+@keyframes gradientShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+.progress-meta{display:flex;justify-content:space-between;font-size:.88rem;color:var(--text-muted)}
+.progress-percent{font-family:var(--font-heading);font-weight:700;color:#fff}
+.history-section{margin-top:.5rem}
+.history-title-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.4rem}
+.history-title-row h2{font-family:var(--font-heading);font-size:1.3rem;font-weight:700;color:#fff;display:flex;align-items:center;gap:.75rem}
+.history-list{display:flex;flex-direction:column;gap:.8rem}
+.history-card{background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.04);border-radius:var(--radius-md);padding:.85rem 1.2rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;cursor:pointer;transition:var(--transition)}
+.history-card:hover{background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.12);transform:translateY(-2px)}
+.history-info-left{display:flex;align-items:center;gap:1rem;overflow:hidden;flex-grow:1}
+.history-thumb{width:72px;aspect-ratio:16/9;border-radius:8px;object-fit:cover;border:1px solid var(--border-color)}
+.history-metadata{display:flex;flex-direction:column;overflow:hidden}
+.history-video-title{font-weight:600;font-size:.95rem;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.history-video-author{font-size:.8rem;color:var(--text-muted);margin-top:.15rem}
+.history-action-right{display:flex;align-items:center;gap:.6rem}
+.btn-history-action{background:transparent;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;transition:var(--transition)}
+.btn-history-action:hover{background:rgba(255,255,255,0.06);color:#fff}
+.btn-history-action.delete-hist:hover{background:rgba(239,68,68,0.12);color:#ef4444}
+.history-empty{text-align:center;padding:2.2rem 1.5rem;color:var(--text-muted)}
+.history-empty-icon{font-size:2.4rem;margin-bottom:.85rem;color:rgba(255,255,255,0.08)}
+.app-footer{text-align:center;margin-top:2rem;padding-top:1.8rem;border-top:1px solid rgba(255,255,255,0.04);color:var(--text-muted);font-size:.88rem}
+.app-footer p{margin-bottom:.45rem}
+.font-heart{color:#ef4444;animation:heartbeat 1.5s infinite}
+.disclaimer{font-size:.78rem;opacity:.7}
+@keyframes heartbeat{0%,100%{transform:scale(1)}50%{transform:scale(1.2)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeInSlide{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:880px){.video-details-grid{grid-template-columns:1fr;gap:2rem}.video-preview-pane{align-items:center;text-align:center}.thumbnail-wrapper{max-width:520px}.meta-row{justify-content:center}.formats-list{max-height:260px}}
+@media(max-width:620px){.app-container{padding:2rem 1rem}.card{padding:1.5rem 1.1rem}.platform-tab{padding:.85rem 1rem;font-size:.9rem}.platform-tab span{display:none}.platform-tab .icon-platform{font-size:1.5rem;margin:0}.input-group{flex-direction:column;gap:.6rem}.btn{width:100%;padding:1.2rem}#logo-text{font-size:2.2rem}.formats-list{max-height:230px}}
+    </style>
+</head>
+<body class="theme-youtube">
+    <div class="glow-orb orb-1"></div>
+    <div class="glow-orb orb-2"></div>
+    <div class="glow-orb orb-3"></div>
+
+    <div class="app-container">
+        <header class="app-header">
+            <div class="logo-area">
+                <div class="logo-icon"><i class="fa-solid fa-bolt"></i></div>
+                <h1 id="logo-text">Tube<span>Flow</span> <span class="badge-hq">ULTIMATE</span></h1>
+            </div>
+            <p class="tagline">Next-Generation YouTube, TikTok &amp; Instagram Downloader</p>
+        </header>
+
+        <div class="platform-tabs glass-panel">
+            <button class="platform-tab active btn-yt" onclick="selectPlatform('youtube', this)">
+                <i class="fa-brands fa-youtube icon-platform"></i><span>YouTube</span>
+            </button>
+            <button class="platform-tab btn-ig" onclick="selectPlatform('instagram', this)">
+                <i class="fa-brands fa-instagram icon-platform"></i><span>Instagram</span>
+            </button>
+            <button class="platform-tab btn-tt" onclick="selectPlatform('tiktok', this)">
+                <i class="fa-brands fa-tiktok icon-platform"></i><span>TikTok</span>
+            </button>
+            <button class="platform-tab btn-fb" onclick="selectPlatform('facebook', this)">
+                <i class="fa-brands fa-facebook icon-platform"></i><span>Facebook</span>
+            </button>
+            <button class="platform-tab btn-uni" onclick="selectPlatform('universal', this)">
+                <i class="fa-solid fa-globe icon-platform"></i><span>Universal</span>
+            </button>
+        </div>
+
+        <section class="card search-section" id="main-downloader-card">
+            <div class="card-accent-glow"></div>
+            <div class="header-card-row">
+                <h2 class="section-title">
+                    <i class="fa-solid fa-circle-nodes font-accent"></i>
+                    <span id="downloader-card-title">Paste YouTube Link</span>
+                </h2>
+                <span class="active-badge" id="active-platform-badge">YouTube Mode</span>
+            </div>
+            <p class="section-desc" id="downloader-card-desc">Enter a YouTube URL to extract standard MP4 resolutions, adaptive HD video formats, and high-fidelity audios.</p>
+
+            <form id="fetch-form" onsubmit="event.preventDefault(); handleFetch();">
+                <div class="input-group">
+                    <div class="input-wrapper">
+                        <i class="fa-brands fa-youtube input-icon" id="dynamic-input-icon"></i>
+                        <input type="url" id="youtube-url" placeholder="Paste link here..." required autocomplete="off">
+                        <button type="button" id="clear-btn" class="clear-input-btn" title="Clear link">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    <button type="submit" id="fetch-btn" class="btn btn-primary">
+                        <span class="btn-text">Extract Media</span>
+                        <span class="btn-loader hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+                    </button>
+                </div>
+            </form>
+            <div id="status-message" class="status-msg hidden"></div>
+        </section>
+
+        <section id="results-section" class="card results-section hidden">
+            <div class="video-details-grid">
+                <div class="video-preview-pane">
+                    <div class="thumbnail-wrapper">
+                        <img id="video-thumbnail" src="" alt="Video Thumbnail">
+                        <span id="video-duration" class="badge-duration">0:00</span>
+                    </div>
+                    <div class="video-meta-text">
+                        <h3 id="video-title" class="video-title">Video Title</h3>
+                        <div class="meta-row">
+                            <span class="meta-item author-tag"><i class="fa-solid fa-circle-user"></i> <span id="video-author">Channel</span></span>
+                            <span class="meta-item"><i class="fa-solid fa-eye"></i> <span id="video-views">0 views</span></span>
+                        </div>
+                        <p id="video-desc" class="video-description">Description...</p>
+                    </div>
+                </div>
+                <div class="download-formats-pane">
+                    <div class="tabs-container">
+                        <button class="tab-btn active" id="tab-video" onclick="switchTab('video')">
+                            <i class="fa-solid fa-video"></i> Video Streams
+                        </button>
+                        <button class="tab-btn" id="tab-audio" onclick="switchTab('audio')">
+                            <i class="fa-solid fa-music"></i> Audio Tracks
+                        </button>
+                    </div>
+                    <div id="pane-video" class="tab-pane active">
+                        <p class="pane-help">Select your desired video resolution.</p>
+                        <div id="video-formats-list" class="formats-list"></div>
+                    </div>
+                    <div id="pane-audio" class="tab-pane">
+                        <p class="pane-help">Extract and download high-fidelity audio tracks.</p>
+                        <div id="audio-formats-list" class="formats-list"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="progress-section" class="card progress-section hidden">
+            <div class="progress-container">
+                <div class="progress-header">
+                    <span class="progress-title"><i class="fa-solid fa-spinner fa-spin font-accent"></i> Processing Download</span>
+                    <span id="progress-filename" class="progress-filename">video.mp4</span>
+                </div>
+                <div class="progress-bar-wrapper">
+                    <div id="progress-bar-fill" class="progress-bar-fill" style="width:0%"></div>
+                </div>
+                <div class="progress-meta">
+                    <span id="progress-percent" class="progress-percent">0%</span>
+                    <span id="progress-status" class="progress-status">Preparing...</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="card history-section">
+            <div class="history-title-row">
+                <h2><i class="fa-solid fa-clock-rotate-left font-accent"></i> Recent Downloads</h2>
+                <button type="button" id="clear-history-btn" class="btn btn-secondary btn-sm hidden" onclick="clearHistory()">
+                    <i class="fa-solid fa-trash-can"></i> Clear History
+                </button>
+            </div>
+            <div id="history-container" class="history-list">
+                <div class="history-empty">
+                    <i class="fa-solid fa-search history-empty-icon"></i>
+                    <p>No recent downloads yet. Paste a link from YouTube, Instagram or TikTok above to start.</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <footer class="app-footer">
+        <p>&copy; 2026 TubeFlow. Premium Glassmorphic Suite.</p>
+        <p class="disclaimer">Please support content creators. Download videos for personal, fair-use purposes only.</p>
+    </footer>
+
+    <iframe id="download-iframe" style="display:none;"></iframe>
+
+    <script>
+let currentVideo=null,activeTab='video',activePlatform='youtube',activeDownloadInterval=null;
+const bodyEl=document.body,urlInput=document.getElementById('youtube-url'),fetchBtn=document.getElementById('fetch-btn'),clearBtn=document.getElementById('clear-btn'),statusMessage=document.getElementById('status-message'),resultsSection=document.getElementById('results-section'),progressSection=document.getElementById('progress-section'),dynamicInputIcon=document.getElementById('dynamic-input-icon'),activePlatformBadge=document.getElementById('active-platform-badge'),downloaderCardTitle=document.getElementById('downloader-card-title'),downloaderCardDesc=document.getElementById('downloader-card-desc');
+const platformConfigs={youtube:{themeClass:'theme-youtube',placeholder:'https://www.youtube.com/watch?v=dQw4w9WgXcQ',iconClass:'fa-brands fa-youtube',badgeText:'YouTube Mode',cardTitle:'Paste YouTube Link',cardDesc:'Enter a YouTube URL to extract standard MP4 resolutions, adaptive HD video formats, and high-fidelity audios.'},instagram:{themeClass:'theme-instagram',placeholder:'https://www.instagram.com/reel/C8a9XyPJz3b/',iconClass:'fa-brands fa-instagram',badgeText:'Instagram Mode',cardTitle:'Paste Instagram Reel Link',cardDesc:'Enter an Instagram video, reel, or IGTV URL to extract and download high-quality MP4 media.'},tiktok:{themeClass:'theme-tiktok',placeholder:'https://www.tiktok.com/@username/video/123456789',iconClass:'fa-brands fa-tiktok',badgeText:'TikTok Mode',cardTitle:'Paste TikTok Video Link',cardDesc:'Enter a TikTok video link to instantly fetch and download high-definition TikTok streams.'},facebook:{themeClass:'theme-facebook',placeholder:'https://www.facebook.com/watch/?v=1234567890',iconClass:'fa-brands fa-facebook',badgeText:'Facebook Mode',cardTitle:'Paste Facebook Video Link',cardDesc:'Paste a Facebook Video URL to fetch and download high-speed MP4 media.'},universal:{themeClass:'theme-universal',placeholder:'Paste any video link (Twitter, Reddit, Vimeo, Twitch...)',iconClass:'fa-solid fa-globe',badgeText:'Universal Mode',cardTitle:'Universal Video Downloader',cardDesc:'TubeFlow extracts video streams from Twitter, Reddit, Twitch, Vimeo, DailyMotion, and 1000+ sites.'}};
+urlInput.addEventListener('input',()=>{const v=urlInput.value.trim();if(v!==''){clearBtn.style.display='block';detectAndSwitchPlatform(v);}else{clearBtn.style.display='none';}});
+clearBtn.addEventListener('click',()=>{urlInput.value='';clearBtn.style.display='none';urlInput.focus();});
+document.addEventListener('DOMContentLoaded',()=>{selectPlatform('youtube');renderHistory();});
+function selectPlatform(platform,element=null){activePlatform=platform;document.querySelectorAll('.platform-tab').forEach(t=>t.classList.remove('active'));if(element){element.classList.add('active');}else{const p=platform==='youtube'?'btn-yt':(platform==='instagram'?'btn-ig':(platform==='tiktok'?'btn-tt':(platform==='facebook'?'btn-fb':'btn-uni')));const a=document.querySelector(`.${p}`);if(a)a.classList.add('active');}const cfg=platformConfigs[platform];bodyEl.className=cfg.themeClass;urlInput.placeholder=cfg.placeholder;dynamicInputIcon.className=`${cfg.iconClass} input-icon`;activePlatformBadge.textContent=cfg.badgeText;downloaderCardTitle.textContent=cfg.cardTitle;downloaderCardDesc.textContent=cfg.cardDesc;}
+function detectAndSwitchPlatform(url){if(url.includes('youtube.com')||url.includes('youtu.be')){if(activePlatform!=='youtube')selectPlatform('youtube');}else if(url.includes('instagram.com')){if(activePlatform!=='instagram')selectPlatform('instagram');}else if(url.includes('tiktok.com')){if(activePlatform!=='tiktok')selectPlatform('tiktok');}else if(url.includes('facebook.com')||url.includes('fb.watch')){if(activePlatform!=='facebook')selectPlatform('facebook');}else if(isValidUrl(url)){if(activePlatform!=='universal')selectPlatform('universal');}}
+function isValidUrl(url){try{const p=new URL(url);return p.protocol==='http:'||p.protocol==='https:';}catch(_){return false;}}
+async function handleFetch(urlToFetch=null){const url=urlToFetch||urlInput.value.trim();if(!url){showStatus('Please enter a media link.','error');return;}if(!isValidUrl(url)){showStatus('Please enter a valid HTTP/HTTPS link.','error');return;}showStatus('Connecting to platform and extracting media details...','loading');setLoading(true);resultsSection.classList.add('hidden');progressSection.classList.add('hidden');if(activeDownloadInterval){clearInterval(activeDownloadInterval);activeDownloadInterval=null;}try{const response=await fetch(`/api/info?url=${encodeURIComponent(url)}`);const data=await response.json();if(!response.ok||data.error){throw new Error(data.error||'Failed to extract video information');}currentVideo=data;displayResults(data);saveToHistory(data);showStatus('Media successfully analyzed!','success');setTimeout(()=>{resultsSection.scrollIntoView({behavior:'smooth',block:'start'});},150);}catch(error){showStatus(`Error: ${error.message||'Something went wrong. Check your link or run the local server.'}`, 'error');}finally{setLoading(false);}}
+function setLoading(isLoading){const btnText=fetchBtn.querySelector('.btn-text'),btnLoader=fetchBtn.querySelector('.btn-loader');if(isLoading){fetchBtn.disabled=true;urlInput.disabled=true;btnText.classList.add('hidden');btnLoader.classList.remove('hidden');}else{fetchBtn.disabled=false;urlInput.disabled=false;btnText.classList.remove('hidden');btnLoader.classList.add('hidden');}}
+function showStatus(message,type){statusMessage.className=`status-msg ${type}`;let icon='<i class="fa-solid fa-circle-info"></i>';if(type==='error')icon='<i class="fa-solid fa-triangle-exclamation"></i>';else if(type==='success')icon='<i class="fa-solid fa-circle-check"></i>';else if(type==='loading')icon='<i class="fa-solid fa-circle-notch fa-spin font-accent"></i>';statusMessage.innerHTML=`${icon} <span>${message}</span>`;statusMessage.classList.remove('hidden');}
+function displayResults(video){document.getElementById('video-thumbnail').src=video.thumbnail||'';const dur=document.getElementById('video-duration');if(video.duration&&video.duration>0){dur.textContent=video.duration_formatted;dur.style.display='block';}else{dur.style.display='none';}document.getElementById('video-title').textContent=video.title;document.getElementById('video-author').textContent=video.author;document.getElementById('video-views').textContent=video.views_formatted;document.getElementById('video-desc').textContent=video.description||'No description available.';renderFormats(video);resultsSection.classList.remove('hidden');switchTab('video');}
+function formatBytes(bytes,decimals=2){if(!bytes||bytes===0)return'Unknown Size';const k=1024,dm=decimals<0?0:decimals,sizes=['Bytes','KB','MB','GB'],i=Math.floor(Math.log(bytes)/Math.log(k));return parseFloat((bytes/Math.pow(k,i)).toFixed(dm))+' '+sizes[i];}
+function renderFormats(video){const vl=document.getElementById('video-formats-list'),al=document.getElementById('audio-formats-list');vl.innerHTML='';al.innerHTML='';if(video.video_formats&&video.video_formats.length>0){video.video_formats.forEach(f=>{const isHigh=f.quality_label.includes('1080p')||f.quality_label.includes('720p');const isMerge=f.type==='merge';let bc='format-badge';if(isHigh)bc+=' high-quality';if(isMerge)bc+=' no-audio';const c=document.createElement('div');c.className='format-card';c.innerHTML=`<div class="format-info-left"><span class="${bc}">${f.quality_label}</span><div class="format-meta-details"><span class="format-label-title">${f.note}</span><span class="format-subtext">${formatBytes(f.filesize)} &bull; .${f.ext}</span></div></div><button type="button" class="btn-download format-dl-btn" onclick="triggerDownload('${f.format_id}','${f.ext}','${f.quality_label}')"><i class="fa-solid fa-arrow-down"></i></button>`;vl.appendChild(c);});}else{vl.innerHTML='<p class="pane-help">No video formats found.</p>';}if(video.audio_formats&&video.audio_formats.length>0){video.audio_formats.forEach(f=>{const c=document.createElement('div');c.className='format-card';c.innerHTML=`<div class="format-info-left"><span class="format-badge high-quality"><i class="fa-solid fa-music"></i> ${f.quality_label}</span><div class="format-meta-details"><span class="format-label-title">${f.note}</span><span class="format-subtext">${formatBytes(f.filesize)} &bull; .${f.ext}</span></div></div><button type="button" class="btn-download format-dl-btn" onclick="triggerDownload('${f.format_id}','${f.ext}','Audio')"><i class="fa-solid fa-arrow-down"></i></button>`;al.appendChild(c);});}else{al.innerHTML='<p class="pane-help">No audio formats found.</p>';}}
+function switchTab(tab){activeTab=tab;const tv=document.getElementById('tab-video'),ta=document.getElementById('tab-audio'),pv=document.getElementById('pane-video'),pa=document.getElementById('pane-audio');if(tab==='video'){tv.classList.add('active');ta.classList.remove('active');pv.classList.add('active');pa.classList.remove('active');}else{tv.classList.remove('active');ta.classList.add('active');pv.classList.remove('active');pa.classList.add('active');}}
+function toggleDownloadButtons(enabled){document.querySelectorAll('.format-dl-btn').forEach(btn=>{btn.disabled=!enabled;btn.style.opacity=enabled?'1':'0.5';btn.style.cursor=enabled?'pointer':'not-allowed';});}
+async function triggerDownload(formatId,ext,qualityLabel){if(!currentVideo)return;if(activeDownloadInterval){clearInterval(activeDownloadInterval);activeDownloadInterval=null;}const url=currentVideo.url,title=currentVideo.title,downloadFilename=`${title.replace(/[\\/*?"<>|]/g,'')}_${qualityLabel}.${ext}`;progressSection.classList.remove('hidden');progressSection.scrollIntoView({behavior:'smooth',block:'end'});const pf=document.getElementById('progress-bar-fill'),pp=document.getElementById('progress-percent'),ps=document.getElementById('progress-status'),pfl=document.getElementById('progress-filename');pfl.textContent=downloadFilename;pf.style.width='0%';pp.textContent='0%';ps.innerHTML='<i class="fa-solid fa-spinner fa-spin font-accent"></i> Initializing download task on server...';toggleDownloadButtons(false);try{const sr=await fetch(`/api/download/start?url=${encodeURIComponent(url)}&format_id=${formatId}`);const sd=await sr.json();if(!sr.ok||sd.error){throw new Error(sd.error||'Failed to start download task.');}const taskId=sd.task_id;activeDownloadInterval=setInterval(async()=>{try{const pr=await fetch(`/api/download/progress?task_id=${taskId}`);if(!pr.ok)return;const pd=await pr.json();if(pd.status==='downloading'){pf.classList.remove('pulsing-fill');pf.style.width=`${pd.percent}%`;pp.textContent=`${pd.percent}%`;ps.innerHTML=`<i class="fa-solid fa-download fa-bounce font-accent"></i> Downloading: ${pd.percent}% &bull; Speed: ${pd.speed} &bull; ETA: ${pd.eta}`;}else if(pd.status==='merging'){pf.style.width='95%';pf.classList.add('pulsing-fill');pp.textContent='95%';ps.innerHTML=`<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> ${pd.msg}`;}else if(pd.status==='completed'){clearInterval(activeDownloadInterval);activeDownloadInterval=null;pf.style.width='100%';pf.classList.remove('pulsing-fill');pp.textContent='100%';ps.innerHTML='<i class="fa-solid fa-circle-check"></i> Complete! Saving file...';toggleDownloadButtons(true);let di=document.getElementById('download-iframe');di.src=`/api/download/get?task_id=${taskId}`;setTimeout(()=>{progressSection.classList.add('hidden');},6000);}else if(pd.status==='error'){clearInterval(activeDownloadInterval);activeDownloadInterval=null;throw new Error(pd.msg||'Error during download.');}}catch(e){console.error('Poll error:',e);}},800);}catch(error){pp.textContent='Failed';ps.innerHTML=`<span style="color:#ef4444"><i class="fa-solid fa-triangle-exclamation"></i> Error: ${error.message}</span>`;toggleDownloadButtons(true);setTimeout(()=>{progressSection.classList.add('hidden');},8000);}}
+function getHistory(){const h=localStorage.getItem('tubeflow_history');return h?JSON.parse(h):[];}
+function saveToHistory(video){let h=getHistory();h=h.filter(i=>i.url!==video.url);h.unshift({url:video.url,title:video.title,author:video.author,thumbnail:video.thumbnail,views_formatted:video.views_formatted,duration_formatted:video.duration_formatted,timestamp:Date.now()});if(h.length>6)h.pop();localStorage.setItem('tubeflow_history',JSON.stringify(h));renderHistory();}
+function deleteHistoryItem(url,event){event.stopPropagation();let h=getHistory();h=h.filter(i=>i.url!==url);localStorage.setItem('tubeflow_history',JSON.stringify(h));renderHistory();}
+function clearHistory(){localStorage.removeItem('tubeflow_history');renderHistory();}
+function renderHistory(){const hc=document.getElementById('history-container'),cb=document.getElementById('clear-history-btn'),h=getHistory();if(h.length===0){cb.classList.add('hidden');hc.innerHTML='<div class="history-empty"><i class="fa-solid fa-search history-empty-icon"></i><p>No recent downloads yet. Paste a link from YouTube, Instagram or TikTok above to start.</p></div>';return;}cb.classList.remove('hidden');hc.innerHTML='';h.forEach(video=>{const c=document.createElement('div');c.className='history-card';c.onclick=()=>{urlInput.value=video.url;handleFetch(video.url);};c.innerHTML=`<div class="history-info-left"><img class="history-thumb" src="${video.thumbnail||''}" alt="Thumb"><div class="history-metadata"><span class="history-video-title">${video.title}</span><span class="history-video-author">${video.author} &bull; ${video.views_formatted} &bull; ${video.duration_formatted}</span></div></div><div class="history-action-right"><button type="button" class="btn-history-action"><i class="fa-solid fa-rotate-left"></i></button><button type="button" class="btn-history-action delete-hist" onclick="deleteHistoryItem('${video.url}',event)"><i class="fa-solid fa-trash-can"></i></button></div>`;hc.appendChild(c);});}
+    </script>
+</body>
+</html>

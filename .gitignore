@@ -1,0 +1,35 @@
+# Python virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Python caching
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporary downloads and media files
+*.mp4
+*.webm
+*.m4a
+*.mp3
+*.zip
+*.tar.gz
+*.exe
+*.apk
+android-app/
+
+# System log files
+*.log
+.system_generated/
+task-*.log
+
+# IDE settings
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp

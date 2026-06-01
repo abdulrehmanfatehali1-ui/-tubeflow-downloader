@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TubeFlow Ultimate - World-Class Multi-Platform Video Downloader</title>
+    <meta name="description" content="Download high-quality videos and audios from YouTube, TikTok, and Instagram instantly with TubeFlow. The world's most premium ad-free downloader.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="theme-youtube">
+    <!-- Ambient moving glow blobs with dynamic theme colors -->
+    <div class="glow-orb orb-1" id="orb-1"></div>
+    <div class="glow-orb orb-2" id="orb-2"></div>
+    <div class="glow-orb orb-3" id="orb-3"></div>
+
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="logo-area">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-bolt"></i>
+                </div>
+                <h1 id="logo-text">Tube<span>Flow</span> <span class="badge-hq">ULTIMATE</span></h1>
+            </div>
+            <p class="tagline">Next-Generation YouTube, TikTok & Instagram Downloader</p>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            
+            <!-- Platform Selector Bar -->
+            <div class="platform-tabs glass-panel">
+                <button class="platform-tab active btn-yt" onclick="selectPlatform('youtube', this)">
+                    <i class="fa-brands fa-youtube icon-platform"></i>
+                    <span>YouTube</span>
+                </button>
+                <button class="platform-tab btn-ig" onclick="selectPlatform('instagram', this)">
+                    <i class="fa-brands fa-instagram icon-platform"></i>
+                    <span>Instagram</span>
+                </button>
+                <button class="platform-tab btn-tt" onclick="selectPlatform('tiktok', this)">
+                    <i class="fa-brands fa-tiktok icon-platform"></i>
+                    <span>TikTok</span>
+                </button>
+                <button class="platform-tab btn-fb" onclick="selectPlatform('facebook', this)">
+                    <i class="fa-brands fa-facebook icon-platform"></i>
+                    <span>Facebook</span>
+                </button>
+                <button class="platform-tab btn-uni" onclick="selectPlatform('universal', this)">
+                    <i class="fa-solid fa-globe icon-platform"></i>
+                    <span>Universal</span>
+                </button>
+            </div>
+
+            <!-- Search & Input Card -->
+            <section class="card glass-card search-section" id="main-downloader-card">
+                <div class="card-accent-glow"></div>
+                <div class="header-card-row">
+                    <h2 class="section-title">
+                        <i class="fa-solid fa-circle-nodes font-accent header-dynamic-icon"></i> 
+                        <span id="downloader-card-title">Paste YouTube Link</span>
+                    </h2>
+                    <span class="active-badge" id="active-platform-badge">YouTube Mode</span>
+                </div>
+                <p class="section-desc" id="downloader-card-desc">Enter a YouTube URL to extract standard MP4 resolutions, adaptive HD video formats, and high-fidelity audios.</p>
+                
+                <form id="fetch-form" onsubmit="event.preventDefault(); handleFetch();">
+                    <div class="input-group">
+                        <div class="input-wrapper">
+                            <i class="fa-brands fa-youtube input-icon" id="dynamic-input-icon"></i>
+                            <input 
+                                type="url" 
+                                id="youtube-url" 
+                                placeholder="Paste link here..." 
+                                required
+                                autocomplete="off"
+                            >
+                            <button type="button" id="clear-btn" class="clear-input-btn" title="Clear link">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                        <button type="submit" id="fetch-btn" class="btn btn-primary btn-dynamic-accent">
+                            <span class="btn-text">Extract Media</span>
+                            <span class="btn-loader hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Feedback Message -->
+                <div id="status-message" class="status-msg hidden"></div>
+            </section>
+
+            <!-- Video Metadata & Format Download Panel -->
+            <section id="results-section" class="card glass-card results-section hidden">
+                <div class="video-details-grid">
+                    <!-- Left: Video Preview & Info -->
+                    <div class="video-preview-pane">
+                        <div class="thumbnail-wrapper">
+                            <img id="video-thumbnail" src="" alt="Video Thumbnail">
+                            <span id="video-duration" class="badge-duration">0:00</span>
+                        </div>
+                        <div class="video-meta-text">
+                            <h3 id="video-title" class="video-title">Video Title</h3>
+                            <div class="meta-row">
+                                <span class="meta-item author-tag"><i class="fa-solid fa-circle-user"></i> <span id="video-author">Channel Name</span></span>
+                                <span class="meta-item"><i class="fa-solid fa-eye"></i> <span id="video-views">0 views</span></span>
+                            </div>
+                            <p id="video-desc" class="video-description">Description snippet...</p>
+                        </div>
+                    </div>
+
+                    <!-- Right: Format Downloads -->
+                    <div class="download-formats-pane">
+                        <div class="tabs-container">
+                            <button class="tab-btn active" id="tab-video" onclick="switchTab('video')">
+                                <i class="fa-solid fa-video"></i> Video Streams
+                            </button>
+                            <button class="tab-btn" id="tab-audio" onclick="switchTab('audio')">
+                                <i class="fa-solid fa-music"></i> Audio Tracks
+                            </button>
+                        </div>
+
+                        <!-- Tab Content: Video -->
+                        <div id="pane-video" class="tab-pane active">
+                            <p class="pane-help">Select your desired video resolution. High resolution (HQ Merge) formats are dynamically combined with high-quality AAC audio on-the-fly.</p>
+                            <div id="video-formats-list" class="formats-list">
+                                <!-- Dynamic formats inject -->
+                            </div>
+                        </div>
+
+                        <!-- Tab Content: Audio -->
+                        <div id="pane-audio" class="tab-pane">
+                            <p class="pane-help">Extract and download standalone high-fidelity audio tracks in studio-quality format.</p>
+                            <div id="audio-formats-list" class="formats-list">
+                                <!-- Dynamic formats inject -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Download Progress Overlay -->
+            <section id="progress-section" class="card glass-card progress-section hidden">
+                <div class="progress-container">
+                    <div class="progress-header">
+                        <span class="progress-title"><i class="fa-solid fa-spinner fa-spin font-accent progress-spin-icon"></i> Processing Download</span>
+                        <span id="progress-filename" class="progress-filename">video-title.mp4</span>
+                    </div>
+                    <div class="progress-bar-wrapper">
+                        <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%"></div>
+                    </div>
+                    <div class="progress-meta">
+                        <span id="progress-percent" class="progress-percent">0%</span>
+                        <span id="progress-status" class="progress-status">Preparing background download task...</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Recent Downloads / History Dashboard -->
+            <section class="card glass-card history-section">
+                <div class="history-title-row">
+                    <h2><i class="fa-solid fa-clock-rotate-left font-accent"></i> Recent Downloads</h2>
+                    <button type="button" id="clear-history-btn" class="btn btn-secondary btn-sm hidden" onclick="clearHistory()">
+                        <i class="fa-solid fa-trash-can"></i> Clear History
+                    </button>
+                </div>
+                <div id="history-container" class="history-list">
+                    <div class="history-empty">
+                        <i class="fa-solid fa-search history-empty-icon"></i>
+                        <p>No recent downloads yet. Paste a link from YouTube, Instagram or TikTok above to start.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="app-footer">
+            <p>&copy; 2026 TubeFlow. Premium Glassmorphic Suite. Created with <i class="fa-solid fa-heart font-heart"></i></p>
+            <p class="disclaimer">Please support content creators. Download videos for personal, fair-use purposes only.</p>
+        </footer>
+    </div>
+
+    <!-- Hidden iframe for background downloading -->
+    <iframe id="download-iframe" style="display: none;"></iframe>
+
+    <!-- Custom JS -->
+    <script src="/static/app.js"></script>
+</body>
+</html>
