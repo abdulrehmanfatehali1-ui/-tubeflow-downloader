@@ -898,8 +898,8 @@ function startServerSideDownload(formatId, ext, qualityLabel, isMerge, downloadF
     
     progressStatus.innerHTML = `<i class="fa-solid fa-server fa-spin font-accent"></i> Initializing secure server bypass connection...`;
     
-    // We request `/api/download/start?url=...&format_id=...`
-    const startUrl = `/api/download/start?url=${encodeURIComponent(url)}&format_id=${encodeURIComponent(formatId)}`;
+    const formatType = isMerge ? 'merge' : 'combined';
+    const startUrl = `/api/download/start?url=${encodeURIComponent(url)}&format_id=${encodeURIComponent(formatId)}&quality_label=${encodeURIComponent(qualityLabel)}&format_type=${encodeURIComponent(formatType)}`;
     
     fetch(startUrl)
         .then(res => {

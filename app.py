@@ -550,6 +550,199 @@ def get_debug_logs():
 def index():
     return render_template('index.html')
 
+def extract_video_data_server(url):
+    info = None
+    try:
+        ydl_opts = get_ydl_opts({'extract_flat': False})
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception as e:
+        error_msg = f"TubeFlow: Impersonation extraction failed ({str(e)}). Retrying with standard options..."
+        print(error_msg)
+        try:
+            with open("bgutil.log", "a") as log_file:
+                log_file.write(f"\n{error_msg}\n")
+        except Exception:
+            pass
+        try:
+            fallback_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'nocheckcertificate': True,
+                'extract_flat': False,
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['android', 'ios', 'tv', 'creator']
+                    },
+                    'youtubepot-bgutilhttp': {
+                        'base_url': 'http://127.0.0.1:4416'
+                    }
+                }
+            }
+            if os.path.exists('cookies.txt'):
+                fallback_opts['cookiefile'] = 'cookies.txt'
+            with yt_dlp.YoutubeDL(fallback_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+        except Exception as e2:
+            error_msg2 = f"TubeFlow: Standard fallback extraction failed ({str(e2)})."
+            print(error_msg2)
+            try:
+                with open("bgutil.log", "a") as log_file:
+                    log_file.write(f"\n{error_msg2}\n")
+            except Exception:
+                pass
+        
+    if not info:
+        # Fallback to Invidious, Piped & Cobalt APIs to bypass the datacenter IP bot block!
+        print("TubeFlow: yt-dlp blocked. Triggering Invidious/Piped/Cobalt APIs fallback...")
+        fallback_res = fetch_youtube_via_fallback_apis(url)
+        if fallback_res:
+            source = fallback_res['source']
+            data = fallback_res['data']
+            instance = fallback_res['instance']
+            print(f"TubeFlow: Successfully extracted details via fallback {source} instance: {instance}")
+            if source == 'invidious':
+                parsed_res = parse_invidious_info(data, url)
+            elif source == 'cobalt':
+                parsed_res = parse_cobalt_info(data, url)
+            else:
+                parsed_res = parse_piped_info(data, url)
+            return parsed_res
+        else:
+            raise Exception('Could not extract video information. YouTube is actively blocking this server IP. Please try again.')
+        
+    # Select best high-res thumbnail
+    thumbnail = info.get('thumbnail')
+    thumbnails = info.get('thumbnails', [])
+    if thumbnails:
+        thumbnails = [t for t in thumbnails if t.get('width')]
+        if thumbnails:
+            thumbnails.sort(key=lambda x: x.get('width', 0), reverse=True)
+            thumbnail = thumbnails[0].get('url')
+    
+    # Select best audio stream for file size estimations during merging
+    best_audio = None
+    for f in info.get('formats', []):
+        if f.get('vcodec') == 'none' and f.get('acodec') != 'none':
+            if not best_audio or (f.get('filesize') or f.get('filesize_approx') or 0) > (best_audio.get('filesize') or best_audio.get('filesize_approx') or 0):
+                best_audio = f
+    
+    best_audio_size = (best_audio.get('filesize') or best_audio.get('filesize_approx') or 0) if best_audio else 0
+
+    # Parse formats
+    video_formats = []
+    audio_formats = []
+    added_resolutions = set()
+
+    for f in info.get('formats', []):
+        direct_url = f.get('url')
+        if not direct_url:
+            continue
+            
+        format_id = f.get('format_id')
+        ext = f.get('ext', 'mp4')
+        vcodec = f.get('vcodec', 'none') or 'none'
+        acodec = f.get('acodec', 'none') or 'none'
+        filesize = f.get('filesize') or f.get('filesize_approx') or 0
+        
+        if vcodec == 'none' and acodec == 'none' and (f.get('height') or f.get('width')):
+            vcodec = 'mp4'
+            acodec = 'aac'
+            
+        resolution = f.get('resolution')
+        height = f.get('height')
+        if not resolution and height:
+            resolution = f"{f.get('width', 0)}x{height}"
+        
+        quality_label = f"{height}p" if height else (resolution or "Unknown")
+        
+        abr = f.get('abr')
+        audio_label = f"{int(abr)}kbps" if abr else "High Quality"
+        
+        # 1. Combined formats (Video + Audio) - directly streamable
+        if vcodec != 'none' and acodec != 'none':
+            video_formats.append({
+                'format_id': format_id,
+                'ext': ext,
+                'resolution': resolution,
+                'quality_label': quality_label,
+                'filesize': filesize,
+                'type': 'combined',
+                'note': f"Video + Audio ({ext.upper()})"
+            })
+            if height:
+                added_resolutions.add(height)
+
+        # 2. Audio-only formats
+        elif vcodec == 'none' and acodec != 'none':
+            audio_formats.append({
+                'format_id': format_id,
+                'ext': ext,
+                'quality_label': audio_label,
+                'filesize': filesize,
+                'type': 'audio',
+                'note': f"Audio only ({ext.upper()})"
+            })
+
+    # 3. Video-only formats (High Res like 1080p, 1440p)
+    for f in info.get('formats', []):
+        direct_url = f.get('url')
+        if not direct_url:
+            continue
+        
+        vcodec = f.get('vcodec', 'none')
+        acodec = f.get('acodec', 'none')
+        height = f.get('height')
+        
+        if vcodec != 'none' and acodec == 'none' and height and height not in added_resolutions:
+            format_id = f.get('format_id')
+            ext = f.get('ext', 'mp4')
+            filesize = f.get('filesize') or f.get('filesize_approx') or 0
+            resolution = f.get('resolution') or f"{f.get('width', 0)}x{height}"
+            quality_label = f"{height}p"
+            
+            estimated_filesize = filesize + best_audio_size if filesize else 0
+            
+            video_formats.append({
+                'format_id': format_id,
+                'ext': 'mp4',
+                'resolution': resolution,
+                'quality_label': quality_label,
+                'filesize': estimated_filesize,
+                'type': 'merge',
+                'note': "Video + Audio (HQ Merge)"
+            })
+            added_resolutions.add(height)
+
+    # Sort video formats
+    def get_height(x):
+        label = x['quality_label']
+        m = re.search(r'(\d+)', label)
+        return int(m.group(1)) if m else 0
+        
+    video_formats.sort(key=get_height, reverse=True)
+    
+    # Sort audio formats
+    def get_audio_bitrate(x):
+        label = x['quality_label']
+        m = re.search(r'(\d+)', label)
+        return int(m.group(1)) if m else 0
+    audio_formats.sort(key=get_audio_bitrate, reverse=True)
+
+    return {
+        'title': info.get('title', 'Unknown Video'),
+        'author': info.get('uploader') or info.get('channel', 'Unknown Creator'),
+        'thumbnail': thumbnail,
+        'duration': info.get('duration', 0),
+        'duration_formatted': format_duration(info.get('duration')),
+        'views': info.get('view_count', 0),
+        'views_formatted': format_views(info.get('view_count')),
+        'description': info.get('description', '')[:300] + '...' if info.get('description') else 'No description available.',
+        'video_formats': video_formats,
+        'audio_formats': audio_formats,
+        'url': url
+    }
+
 @app.route('/api/info')
 def get_info():
     url = request.args.get('url')
@@ -557,200 +750,8 @@ def get_info():
         return jsonify({'error': 'URL is required'}), 400
     
     try:
-        info = None
-        try:
-            ydl_opts = get_ydl_opts({'extract_flat': False})
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-        except Exception as e:
-            error_msg = f"TubeFlow: Impersonation extraction failed ({str(e)}). Retrying with standard options..."
-            print(error_msg)
-            try:
-                with open("bgutil.log", "a") as log_file:
-                    log_file.write(f"\n{error_msg}\n")
-            except Exception:
-                pass
-            try:
-                fallback_opts = {
-                    'quiet': True,
-                    'no_warnings': True,
-                    'nocheckcertificate': True,
-                    'extract_flat': False,
-                    'extractor_args': {
-                        'youtube': {
-                            'player_client': ['android', 'ios', 'tv', 'creator']
-                        },
-                        'youtubepot-bgutilhttp': {
-                            'base_url': 'http://127.0.0.1:4416'
-                        }
-                    }
-                }
-                if os.path.exists('cookies.txt'):
-                    fallback_opts['cookiefile'] = 'cookies.txt'
-                with yt_dlp.YoutubeDL(fallback_opts) as ydl:
-                    info = ydl.extract_info(url, download=False)
-            except Exception as e2:
-                error_msg2 = f"TubeFlow: Standard fallback extraction failed ({str(e2)})."
-                print(error_msg2)
-                try:
-                    with open("bgutil.log", "a") as log_file:
-                        log_file.write(f"\n{error_msg2}\n")
-                except Exception:
-                    pass
-            
-        if not info:
-            # Fallback to Invidious, Piped & Cobalt APIs to bypass the datacenter IP bot block!
-            print("TubeFlow: yt-dlp blocked. Triggering Invidious/Piped/Cobalt APIs fallback...")
-            fallback_res = fetch_youtube_via_fallback_apis(url)
-            if fallback_res:
-                source = fallback_res['source']
-                data = fallback_res['data']
-                instance = fallback_res['instance']
-                print(f"TubeFlow: Successfully extracted details via fallback {source} instance: {instance}")
-                if source == 'invidious':
-                    parsed_res = parse_invidious_info(data, url)
-                elif source == 'cobalt':
-                    parsed_res = parse_cobalt_info(data, url)
-                else:
-                    parsed_res = parse_piped_info(data, url)
-                return jsonify(parsed_res)
-            else:
-                return jsonify({'error': 'Could not extract video information. YouTube is actively blocking this server IP. Please try again in a few minutes.'}), 400
-            
-        # Select best high-res thumbnail
-        thumbnail = info.get('thumbnail')
-        thumbnails = info.get('thumbnails', [])
-        if thumbnails:
-            thumbnails = [t for t in thumbnails if t.get('width')]
-            if thumbnails:
-                thumbnails.sort(key=lambda x: x.get('width', 0), reverse=True)
-                thumbnail = thumbnails[0].get('url')
-        
-        # Select best audio stream for file size estimations during merging
-        best_audio = None
-        for f in info.get('formats', []):
-            if f.get('vcodec') == 'none' and f.get('acodec') != 'none':
-                if not best_audio or (f.get('filesize') or f.get('filesize_approx') or 0) > (best_audio.get('filesize') or best_audio.get('filesize_approx') or 0):
-                    best_audio = f
-        
-        best_audio_size = (best_audio.get('filesize') or best_audio.get('filesize_approx') or 0) if best_audio else 0
-
-        # Parse formats
-        video_formats = []
-        audio_formats = []
-        added_resolutions = set()
-
-        for f in info.get('formats', []):
-            direct_url = f.get('url')
-            if not direct_url:
-                continue
-                
-            format_id = f.get('format_id')
-            ext = f.get('ext', 'mp4')
-            vcodec = f.get('vcodec', 'none') or 'none'
-            acodec = f.get('acodec', 'none') or 'none'
-            filesize = f.get('filesize') or f.get('filesize_approx') or 0
-            
-            # Codec fallback for non-YouTube platforms (TikTok/Instagram) where codec fields might be empty/null
-            # but resolution dimensions exist. We treat them as combined video+audio formats.
-            if vcodec == 'none' and acodec == 'none' and (f.get('height') or f.get('width')):
-                vcodec = 'mp4'
-                acodec = 'aac'
-                
-            resolution = f.get('resolution')
-            height = f.get('height')
-            if not resolution and height:
-                resolution = f"{f.get('width', 0)}x{height}"
-            
-            quality_label = f"{height}p" if height else (resolution or "Unknown")
-            
-            # Audio bitrate
-            abr = f.get('abr')
-            audio_label = f"{int(abr)}kbps" if abr else "High Quality"
-            
-            # 1. Combined formats (Video + Audio) - directly streamable
-            if vcodec != 'none' and acodec != 'none':
-                video_formats.append({
-                    'format_id': format_id,
-                    'ext': ext,
-                    'resolution': resolution,
-                    'quality_label': quality_label,
-                    'filesize': filesize,
-                    'type': 'combined',
-                    'note': f"Video + Audio ({ext.upper()})"
-                })
-                if height:
-                    added_resolutions.add(height)
-
-            # 2. Audio-only formats
-            elif vcodec == 'none' and acodec != 'none':
-                audio_formats.append({
-                    'format_id': format_id,
-                    'ext': ext,
-                    'quality_label': audio_label,
-                    'filesize': filesize,
-                    'type': 'audio',
-                    'note': f"Audio only ({ext.upper()})"
-                })
-
-        # 3. Video-only formats (High Res like 1080p, 1440p) - we merge them with best audio on-the-fly!
-        for f in info.get('formats', []):
-            direct_url = f.get('url')
-            if not direct_url:
-                continue
-            
-            vcodec = f.get('vcodec', 'none')
-            acodec = f.get('acodec', 'none')
-            height = f.get('height')
-            
-            if vcodec != 'none' and acodec == 'none' and height and height not in added_resolutions:
-                format_id = f.get('format_id')
-                ext = f.get('ext', 'mp4')
-                filesize = f.get('filesize') or f.get('filesize_approx') or 0
-                resolution = f.get('resolution') or f"{f.get('width', 0)}x{height}"
-                quality_label = f"{height}p"
-                
-                estimated_filesize = filesize + best_audio_size if filesize else 0
-                
-                video_formats.append({
-                    'format_id': format_id,
-                    'ext': 'mp4',
-                    'resolution': resolution,
-                    'quality_label': quality_label,
-                    'filesize': estimated_filesize,
-                    'type': 'merge',
-                    'note': "Video + Audio (HQ Merge)"
-                })
-                added_resolutions.add(height)
-
-        # Sort video formats by height descending
-        def get_height(x):
-            label = x['quality_label']
-            m = re.search(r'(\d+)', label)
-            return int(m.group(1)) if m else 0
-            
-        video_formats.sort(key=get_height, reverse=True)
-        
-        # Sort audio formats by quality
-        def get_audio_bitrate(x):
-            label = x['quality_label']
-            m = re.search(r'(\d+)', label)
-            return int(m.group(1)) if m else 0
-        audio_formats.sort(key=get_audio_bitrate, reverse=True)
-
-        return jsonify({
-            'title': info.get('title', 'Unknown Video'),
-            'author': info.get('uploader') or info.get('channel', 'Unknown Creator'),
-            'thumbnail': thumbnail,
-            'duration': info.get('duration', 0),
-            'duration_formatted': format_duration(info.get('duration')),
-            'views': info.get('view_count', 0),
-            'views_formatted': format_views(info.get('view_count')),
-            'description': info.get('description', '')[:300] + '...' if info.get('description') else 'No description available.',
-            'video_formats': video_formats,
-            'audio_formats': audio_formats,
-            'url': url
-        })
+        data = extract_video_data_server(url)
+        return jsonify(data)
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -839,29 +840,73 @@ def async_download_worker(url, format_id, task_id, title, is_merge):
                 ydl.download([url])
         except Exception as dl_err:
             print(f"TubeFlow: Impersonation download failed ({str(dl_err)}). Retrying with standard options...")
-            fallback_opts = {
-                'format': ydl_opts.get('format'),
-                'outtmpl': ydl_opts.get('outtmpl'),
-                'quiet': True,
-                'no_warnings': True,
-                'nocheckcertificate': True,
-                'progress_hooks': ydl_opts.get('progress_hooks'),
-                'merge_output_format': ydl_opts.get('merge_output_format'),
-                'postprocessor_args': ydl_opts.get('postprocessor_args'),
-                'ffmpeg_location': ydl_opts.get('ffmpeg_location'),
-                'extractor_args': {
-                    'youtube': {
-                        'player_client': ['android', 'ios', 'tv', 'creator']
-                    },
-                    'youtubepot-bgutilhttp': {
-                        'base_url': 'http://127.0.0.1:4416'
+            try:
+                fallback_opts = {
+                    'format': ydl_opts.get('format'),
+                    'outtmpl': ydl_opts.get('outtmpl'),
+                    'quiet': True,
+                    'no_warnings': True,
+                    'nocheckcertificate': True,
+                    'progress_hooks': ydl_opts.get('progress_hooks'),
+                    'merge_output_format': ydl_opts.get('merge_output_format'),
+                    'postprocessor_args': ydl_opts.get('postprocessor_args'),
+                    'ffmpeg_location': ydl_opts.get('ffmpeg_location'),
+                    'extractor_args': {
+                        'youtube': {
+                            'player_client': ['android', 'ios', 'tv', 'creator']
+                        },
+                        'youtubepot-bgutilhttp': {
+                            'base_url': 'http://127.0.0.1:4416'
+                        }
                     }
                 }
-            }
-            if os.path.exists('cookies.txt'):
-                fallback_opts['cookiefile'] = 'cookies.txt'
-            with yt_dlp.YoutubeDL(fallback_opts) as ydl:
-                ydl.download([url])
+                if os.path.exists('cookies.txt'):
+                    fallback_opts['cookiefile'] = 'cookies.txt'
+                with yt_dlp.YoutubeDL(fallback_opts) as ydl:
+                    ydl.download([url])
+            except Exception as dl_err_final:
+                print(f"TubeFlow Async: yt-dlp blocked on download ({str(dl_err_final)}). Falling back to Cobalt server-side merge...")
+                try:
+                    cobalt_res = None
+                    for instance in COBALT_INSTANCES:
+                        res = query_single_cobalt(instance, url)
+                        if res:
+                            cobalt_res = res
+                            break
+                    
+                    if cobalt_res:
+                        direct_url = cobalt_res['data'].get('url')
+                        # Download direct Cobalt stream URL to our temp file
+                        headers = {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+                        }
+                        if curl_requests:
+                            response = curl_requests.get(direct_url, headers=headers, stream=True, impersonate="chrome", timeout=20)
+                        else:
+                            response = requests.get(direct_url, headers=headers, stream=True, timeout=20)
+                        response.raise_for_status()
+                        
+                        temp_dest = os.path.join(temp_dir, f"tubeflow_{task_id}.mp4")
+                        total_size = int(response.headers.get('content-length', 0))
+                        downloaded = 0
+                        
+                        with open(temp_dest, 'wb') as f_out:
+                            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                                if chunk:
+                                    f_out.write(chunk)
+                                    downloaded += len(chunk)
+                                    percent = round((downloaded / total_size) * 100, 1) if total_size > 0 else 50
+                                    with tasks_lock:
+                                        if task_id in DOWNLOAD_TASKS:
+                                            DOWNLOAD_TASKS[task_id].update({
+                                                'status': 'downloading',
+                                                'percent': percent,
+                                                'msg': f"Downloading via server-side bypass: {percent}% completed"
+                                            })
+                    else:
+                        raise Exception("Bypass servers are currently rate-limited. Please try again.")
+                except Exception as fallback_err:
+                    raise Exception(f"Bypass Failed: {str(fallback_err)}")
             
         # Discover output filepath
         ext = 'mp4'
@@ -930,27 +975,31 @@ def async_download_worker(url, format_id, task_id, title, is_merge):
 def start_async_download():
     url = request.args.get('url')
     format_id = request.args.get('url_format_id') or request.args.get('format_id')
+    quality_label = request.args.get('quality_label')
+    format_type = request.args.get('format_type')
     
-    if not url or not format_id:
-        return jsonify({'error': 'URL and format_id are required'}), 400
+    if not url:
+        return jsonify({'error': 'URL is required'}), 400
         
-    # Check if format_id is a base64 encoded direct stream payload
+    is_youtube = "youtube.com" in url or "youtu.be" in url
     is_direct = False
     direct_url = ""
     title = "video"
     ext = "mp4"
     
-    try:
-        decoded = base64.b64decode(format_id.encode('utf-8')).decode('utf-8')
-        if '|' in decoded and (decoded.startswith('http://') or decoded.startswith('https://')):
-            parts = decoded.split('|')
-            direct_url = parts[0]
-            title = parts[1]
-            ext = parts[2]
-            is_direct = True
-    except Exception:
-        pass
-        
+    # We only use direct client URLs for non-YouTube platforms where CDN links aren't IP-locked!
+    if not is_youtube and format_id:
+        try:
+            decoded = base64.b64decode(format_id.encode('utf-8')).decode('utf-8')
+            if '|' in decoded and (decoded.startswith('http://') or decoded.startswith('https://')):
+                parts = decoded.split('|')
+                direct_url = parts[0]
+                title = parts[1]
+                ext = parts[2]
+                is_direct = True
+        except Exception:
+            pass
+            
     if is_direct:
         task_id = str(uuid.uuid4())
         with tasks_lock:
@@ -974,73 +1023,66 @@ def start_async_download():
         return jsonify({'task_id': task_id, 'title': title})
         
     try:
-        info = None
-        try:
-            ydl_opts = get_ydl_opts()
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-        except Exception:
-            try:
-                fallback_opts = {
-                    'quiet': True,
-                    'no_warnings': True,
-                    'nocheckcertificate': True,
-                    'extractor_args': {
-                        'youtube': {
-                            'player_client': ['ios', 'web_embedded']
-                        },
-                        'youtubepot-bgutilhttp': {
-                            'base_url': 'http://127.0.0.1:4416'
-                        }
-                    }
-                }
-                if os.path.exists('cookies.txt'):
-                    fallback_opts['cookiefile'] = 'cookies.txt'
-                with yt_dlp.YoutubeDL(fallback_opts) as ydl:
-                    info = ydl.extract_info(url, download=False)
-            except Exception:
-                pass
-            
-        if not info:
-            return jsonify({'error': 'Could not extract video details'}), 400
-            
-        title = info.get('title', 'video')
+        # YouTube files MUST extract and resolve URLs using the server's own IP to bypass the IP lock!
+        server_data = extract_video_data_server(url)
+        title = server_data.get('title', 'video')
         
-        # Find format details to check if it needs merging
         selected_format = None
-        for f in info.get('formats', []):
-            if f.get('format_id') == format_id:
+        target_list = server_data.get('audio_formats' if format_type == 'audio' else 'video_formats', [])
+        
+        # Match by requested quality label
+        for f in target_list:
+            if f.get('quality_label') == quality_label:
                 selected_format = f
                 break
                 
-        if not selected_format:
-            return jsonify({'error': f'Format {format_id} not found'}), 404
+        if not selected_format and target_list:
+            selected_format = target_list[0]
             
-        vcodec = selected_format.get('vcodec', 'none')
-        acodec = selected_format.get('acodec', 'none')
-        is_merge = (vcodec != 'none' and acodec == 'none')
+        if not selected_format:
+            return jsonify({'error': f'Format quality {quality_label} not found on server'}), 404
+            
+        server_format_id = selected_format.get('format_id')
+        ext = selected_format.get('ext', 'mp4')
+        is_merge = (selected_format.get('type') == 'merge')
         
-        # Generate task ID
         task_id = str(uuid.uuid4())
-        
         with tasks_lock:
             DOWNLOAD_TASKS[task_id] = {
                 'status': 'starting',
                 'percent': 0,
                 'speed': '0 KB/s',
                 'eta': 'calculating...',
-                'msg': 'Initializing download thread on server...',
+                'msg': 'Initializing secure server bypass connection...',
                 'filepath': '',
                 'filename': '',
                 'created_at': time.time()
             }
             
-        # Start worker thread
-        thread = threading.Thread(
-            target=async_download_worker,
-            args=(url, format_id, task_id, title, is_merge),
-            daemon=True
-        )
+        # Check if the resolved format is base64 encoded direct stream payload
+        is_server_direct = False
+        server_direct_url = ""
+        try:
+            decoded = base64.b64decode(server_format_id.encode('utf-8')).decode('utf-8')
+            if '|' in decoded and (decoded.startswith('http://') or decoded.startswith('https://')):
+                parts = decoded.split('|')
+                server_direct_url = parts[0]
+                is_server_direct = True
+        except Exception:
+            pass
+            
+        if is_server_direct:
+            thread = threading.Thread(
+                target=direct_stream_download_worker,
+                args=(server_direct_url, task_id, title, ext),
+                daemon=True
+            )
+        else:
+            thread = threading.Thread(
+                target=async_download_worker,
+                args=(url, server_format_id, task_id, title, is_merge),
+                daemon=True
+            )
         thread.start()
         
         return jsonify({'task_id': task_id, 'title': title})
