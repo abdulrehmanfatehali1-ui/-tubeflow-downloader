@@ -65,11 +65,7 @@ def get_ydl_opts(extra_opts=None):
     # This completely unblocks YouTube extractions forever on the cloud server!
     if os.path.exists('cookies.txt'):
         opts['cookiefile'] = 'cookies.txt'
-    try:
-        from yt_dlp.networking.impersonate import ImpersonateTarget
-        opts['impersonate'] = ImpersonateTarget.from_str('chrome')
-    except Exception:
-        pass
+
     
     if extra_opts:
         if 'extractor_args' in extra_opts:
@@ -482,6 +478,8 @@ def get_info():
                         }
                     }
                 }
+                if os.path.exists('cookies.txt'):
+                    fallback_opts['cookiefile'] = 'cookies.txt'
                 with yt_dlp.YoutubeDL(fallback_opts) as ydl:
                     info = ydl.extract_info(url, download=False)
             except Exception as e2:
@@ -751,6 +749,8 @@ def async_download_worker(url, format_id, task_id, title, is_merge):
                     }
                 }
             }
+            if os.path.exists('cookies.txt'):
+                fallback_opts['cookiefile'] = 'cookies.txt'
             with yt_dlp.YoutubeDL(fallback_opts) as ydl:
                 ydl.download([url])
             
@@ -885,6 +885,8 @@ def start_async_download():
                         }
                     }
                 }
+                if os.path.exists('cookies.txt'):
+                    fallback_opts['cookiefile'] = 'cookies.txt'
                 with yt_dlp.YoutubeDL(fallback_opts) as ydl:
                     info = ydl.extract_info(url, download=False)
             except Exception:
