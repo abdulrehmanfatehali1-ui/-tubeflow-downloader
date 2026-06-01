@@ -193,7 +193,7 @@ function parseInvidiousClientSide(data, url) {
     const video_formats = [];
     const audio_formats = [];
     
-    // Process formatStreams
+    // Process formatStreams (Combined video + audio - with sound!)
     (data.formatStreams || []).forEach(f => {
         const ext = f.container || 'mp4';
         const quality = f.qualityLabel || '360p';
@@ -212,11 +212,11 @@ function parseInvidiousClientSide(data, url) {
             quality_label: quality,
             filesize: size,
             type: 'combined',
-            note: `Direct Stream (${ext.toUpperCase()})`
+            note: 'Video + Audio (Direct)'
         });
     });
     
-    // Process adaptiveFormats
+    // Process adaptiveFormats (Separate video-only and audio-only)
     (data.adaptiveFormats || []).forEach(f => {
         const mime = f.type || '';
         const ext = f.container || 'mp4';
@@ -248,14 +248,15 @@ function parseInvidiousClientSide(data, url) {
                 size = estimateSize(quality, duration);
             }
             
+            // This is video-only! We treat it as a merge format so the server merges it with audio
             video_formats.push({
                 format_id: encoded_id,
-                ext: ext,
+                ext: 'mp4',
                 resolution: f.resolution || '',
                 quality_label: quality,
                 filesize: size,
-                type: 'combined',
-                note: 'Direct Video'
+                type: 'merge',
+                note: 'Video + Audio (HQ Merge)'
             });
         }
     });
@@ -302,7 +303,6 @@ function parsePipedClientSide(data, url) {
         
         let size = parseInt(f.size) || 0;
         if (!size || size < 50000) {
-            // Check Piped bitrate fallback estimation
             const apiBitrate = parseInt(f.bitrate || 0);
             if (apiBitrate > 10000) {
                 size = Math.floor((apiBitrate * duration) / 8);
@@ -311,14 +311,16 @@ function parsePipedClientSide(data, url) {
             }
         }
         
+        const isVideoOnly = f.videoOnly === true;
+        
         video_formats.push({
             format_id: encoded_id,
-            ext: ext,
+            ext: isVideoOnly ? 'mp4' : ext,
             resolution: quality,
             quality_label: quality,
             filesize: size,
-            type: 'combined',
-            note: 'Direct Video'
+            type: isVideoOnly ? 'merge' : 'combined',
+            note: isVideoOnly ? 'Video + Audio (HQ Merge)' : 'Video + Audio (Direct)'
         });
     });
     
@@ -823,26 +825,57 @@ async function triggerDownload(formatId, ext, qualityLabel) {
                     }, 6000);
                     
                 } else if (progData.status === 'error') {
-                    // Thread crashed
                     clearInterval(activeDownloadInterval);
                     activeDownloadInterval = null;
-                    throw new Error(progData.msg || 'An error occurred during server download worker execution.');
+                    
+                    let directLinkHtml = '';
+                    try {
+                        const decoded = atob(formatId);
+                        if (decoded.includes('|')) {
+                            const parts = decoded.split('|');
+                            const directUrl = parts[0];
+                            const title = parts[1] || 'video';
+                            const ext = parts[2] || 'mp4';
+                            const downloadName = `${title.replace(/[\\/*?:"<>|]/g, '')}_${qualityLabel}.${ext}`;
+                            const isCombined = !formatId.includes('merge');
+                            const warningText = isCombined ? ' (With Sound)' : ' (HQ Merge: Video Only)';
+                            
+                            directLinkHtml = `<br><br><a href="${directUrl}" download="${downloadName}" target="_blank" class="btn btn-primary btn-sm btn-dynamic-accent" style="margin-top:10px; display:inline-block; text-decoration:none; color:white; padding:8px 16px; border-radius:8px;"><i class="fa-solid fa-circle-arrow-down"></i> Save Directly in Browser${warningText}</a>`;
+                        }
+                    } catch (_) {}
+                    
+                    progressPercent.textContent = 'Failed';
+                    progressStatus.innerHTML = `<span style="color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Server Download Blocked.<br>Please download directly via user browser:${directLinkHtml}</span>`;
+                    toggleDownloadButtons(true);
                 }
                 
             } catch (pollErr) {
                 console.error('Polling error:', pollErr);
             }
-        }, 800); // Poll every 800ms
+        }, 800);
         
     } catch (error) {
         console.error(error);
-        progressPercent.textContent = 'Failed';
-        progressStatus.innerHTML = `<span style="color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Error: ${error.message || 'Server task failed.'}</span>`;
-        toggleDownloadButtons(true);
         
-        setTimeout(() => {
-            progressSection.classList.add('hidden');
-        }, 8000);
+        let directLinkHtml = '';
+        try {
+            const decoded = atob(formatId);
+            if (decoded.includes('|')) {
+                const parts = decoded.split('|');
+                const directUrl = parts[0];
+                const title = parts[1] || 'video';
+                const ext = parts[2] || 'mp4';
+                const downloadName = `${title.replace(/[\\/*?:"<>|]/g, '')}_${qualityLabel}.${ext}`;
+                const isCombined = !formatId.includes('merge');
+                const warningText = isCombined ? ' (With Sound)' : ' (HQ Merge: Video Only)';
+                
+                directLinkHtml = `<br><br><a href="${directUrl}" download="${downloadName}" target="_blank" class="btn btn-primary btn-sm btn-dynamic-accent" style="margin-top:10px; display:inline-block; text-decoration:none; color:white; padding:8px 16px; border-radius:8px;"><i class="fa-solid fa-circle-arrow-down"></i> Save Directly in Browser${warningText}</a>`;
+            }
+        } catch (_) {}
+        
+        progressPercent.textContent = 'Failed';
+        progressStatus.innerHTML = `<span style="color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Connection Failed.<br>Please download directly via user browser:${directLinkHtml}</span>`;
+        toggleDownloadButtons(true);
     }
 }
 
