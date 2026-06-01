@@ -828,50 +828,65 @@ async function getCobaltMergedLink(videoUrl, qualityLabel, isAudio = false) {
         'https://api.kuko.rip'
     ];
     
-    // We send a clean payload compatible with both Cobalt v6 and v7!
-    const payload = {
-        url: videoUrl,
-        isAudioOnly: isAudio,
-        downloadMode: isAudio ? 'audio' : 'video'
-    };
+    let q = '720';
+    const qLower = (qualityLabel || '').toLowerCase();
+    if (qLower.includes('2160') || qLower.includes('4k')) q = '2160';
+    else if (qLower.includes('1440') || qLower.includes('2k')) q = '1440';
+    else if (qLower.includes('1080')) q = '1080';
+    else if (qLower.includes('720')) q = '720';
+    else if (qLower.includes('480')) q = '480';
+    else if (qLower.includes('360')) q = '360';
     
-    if (!isAudio) {
-        let q = '720';
-        const qLower = (qualityLabel || '').toLowerCase();
-        if (qLower.includes('2160') || qLower.includes('4k')) q = '2160';
-        else if (qLower.includes('1440') || qLower.includes('2k')) q = '1440';
-        else if (qLower.includes('1080')) q = '1080';
-        else if (qLower.includes('720')) q = '720';
-        else if (qLower.includes('480')) q = '480';
-        else if (qLower.includes('360')) q = '360';
-        
-        payload.vQuality = q;
-        payload.videoQuality = q;
-    } else {
-        payload.audioFormat = 'mp3';
-    }
+    // We try 3 levels of payloads to bypass strict JSON schema validators (v7 vs v6 vs minimal)!
+    const payloads = [
+        // Level 1: Strict Cobalt v7 payload (clean)
+        {
+            url: videoUrl,
+            isAudioOnly: isAudio,
+            videoQuality: q,
+            audioFormat: isAudio ? 'mp3' : undefined
+        },
+        // Level 2: Strict Cobalt v6 payload (clean)
+        {
+            url: videoUrl,
+            isAudioOnly: isAudio,
+            vQuality: q
+        },
+        // Level 3: Minimal universal payload (100% accepted by all versions)
+        {
+            url: videoUrl
+        }
+    ];
     
     for (let instance of instances) {
         for (let path of ["/api/json", ""]) {
-            try {
-                const response = await fetch(`${instance}${path}`, {
-                    method: 'POST',
-                    headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                });
-                if (response.ok) {
-                    const json = await response.json();
-                    if (json && json.url && ['stream', 'redirect', 'tunnel'].includes(json.status)) {
-                        return {
-                            url: json.url,
-                            filename: json.filename || 'Extracted Video'
-                        };
-                    }
+            for (let payload of payloads) {
+                // Filter undefined values
+                const cleanPayload = {};
+                for (let [k, v] of Object.entries(payload)) {
+                    if (v !== undefined) cleanPayload[k] = v;
                 }
-            } catch (_) {}
+                
+                try {
+                    const response = await fetch(`${instance}${path}`, {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(cleanPayload)
+                    });
+                    if (response.ok) {
+                        const json = await response.json();
+                        if (json && json.url && ['stream', 'redirect', 'tunnel'].includes(json.status)) {
+                            return {
+                                url: json.url,
+                                filename: json.filename || 'Extracted Video'
+                            };
+                        }
+                    }
+                } catch (_) {}
+            }
         }
     }
     throw new Error("SaaS merge servers are currently busy. Please try a standard 'Direct' resolution.");
