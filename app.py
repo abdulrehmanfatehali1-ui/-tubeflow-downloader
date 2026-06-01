@@ -32,7 +32,7 @@ def get_ydl_opts(extra_opts=None):
         'extractor_retries': 0,
         'extractor_args': {
             'youtube': {
-                'player_client': ['ios', 'web_embedded']
+                'player_client': ['android', 'ios', 'tv', 'creator']
             }
         }
     }
@@ -60,20 +60,17 @@ tasks_lock = threading.Lock()
 # List of public stable Invidious and Piped instances to fetch YouTube metadata when yt-dlp is blocked
 INVIDIOUS_INSTANCES = [
     'https://invidious.projectsegfau.lt',
-    'https://yewtu.be',
-    'https://inv.tux.im',
-    'https://invidious.nerdvpn.de',
-    'https://invidious.jing.rocks',
     'https://invidious.no-logs.com',
-    'https://invidious.privacydev.net'
+    'https://inv.tux.im',
+    'https://invidious.jing.rocks',
+    'https://yewtu.be'
 ]
 
 PIPED_INSTANCES = [
-    'https://pipedapi.kavin.rocks',
+    'https://pipedapi.ram.icu',
     'https://pipedapi.colbyland.org',
-    'https://api.piped.yt',
-    'https://pipedapi.smnz.de',
-    'https://piped-api.lunar.icu'
+    'https://pipedapi.kavin.rocks',
+    'https://pipedapi.smnz.de'
 ]
 
 # Helper to extract 11-character YouTube video ID
@@ -422,7 +419,7 @@ def get_info():
                     'extract_flat': False,
                     'extractor_args': {
                         'youtube': {
-                            'player_client': ['ios', 'web_embedded']
+                            'player_client': ['android', 'ios', 'tv', 'creator']
                         }
                     }
                 }
@@ -682,7 +679,7 @@ def async_download_worker(url, format_id, task_id, title, is_merge):
                 'ffmpeg_location': ydl_opts.get('ffmpeg_location'),
                 'extractor_args': {
                     'youtube': {
-                        'player_client': ['ios', 'web_embedded']
+                        'player_client': ['android', 'ios', 'tv', 'creator']
                     }
                 }
             }
@@ -704,7 +701,7 @@ def async_download_worker(url, format_id, task_id, title, is_merge):
                     'nocheckcertificate': True,
                     'extractor_args': {
                         'youtube': {
-                            'player_client': ['ios', 'web_embedded']
+                            'player_client': ['android', 'ios', 'tv', 'creator']
                         }
                     }
                 }
