@@ -885,10 +885,30 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     const downloadFilename = `${title.replace(/[\\/*?"<>|]/g, '')}_${qualityLabel}.${ext}`;
     const isAudio = formatType === 'audio' || qualityLabel === 'Audio';
 
+    // ── ROUTE HQ MERGE & COMBINED → SERVER PIPELINE ──────────────────────────
+    // For formats that need ffmpeg merging OR are large combined streams,
+    // use the proven server-side download pipeline with real-time progress.
+    // This avoids "Site wasn't available" from failed stream proxies.
+    // ─────────────────────────────────────────────────────────────────────────
+    if (formatType === 'merge' || formatType === 'combined') {
+        showStatus('Processing download... Please wait.', 'loading');
+        progressSection.classList.remove('hidden');
+        progressSection.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        document.getElementById('progress-bar-fill').style.width = '0%';
+        document.getElementById('progress-bar-fill').classList.add('pulsing-fill');
+        document.getElementById('progress-percent').textContent = 'Starting';
+        document.getElementById('progress-filename').textContent = downloadFilename;
+        toggleDownloadButtons(false);
+        const isMerge = formatType === 'merge';
+        startServerSideDownload(formatId, ext, qualityLabel, isMerge, downloadFilename);
+        return;
+    }
+
     // Set Loading state
     showStatus('Processing download... Please wait.', 'loading');
     progressSection.classList.remove('hidden');
     progressSection.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
     
     const progressFill = document.getElementById('progress-bar-fill');
     const progressPercent = document.getElementById('progress-percent');
