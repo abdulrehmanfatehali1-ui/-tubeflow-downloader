@@ -670,48 +670,72 @@ def proxy_merge():
         return resp
 
     # Download video and audio to temp files, then merge with ffmpeg
+    import shutil
     tmp_dir = tempfile.mkdtemp()
-    video_path = os.path.join(tmp_dir, 'video_in.mp4')
-    audio_path = os.path.join(tmp_dir, 'audio_in.m4a')
+    video_path  = os.path.join(tmp_dir, 'video_in.mp4')
+    audio_path  = os.path.join(tmp_dir, 'audio_in.audio')  # neutral ext, ffmpeg auto-detects
     output_path = os.path.join(tmp_dir, 'merged_out.mp4')
 
     def download_file(url, dest):
         hdrs = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
             'Accept': '*/*',
             'Accept-Encoding': 'identity',
             'Referer': 'https://www.youtube.com/',
+            'Origin': 'https://www.youtube.com',
         }
         r = requests.get(url, headers=hdrs, stream=True, timeout=300)
+        r.raise_for_status()
+        total = 0
         with open(dest, 'wb') as f:
-            for chunk in r.iter_content(chunk_size=65536):
+            for chunk in r.iter_content(chunk_size=131072):
                 if chunk:
                     f.write(chunk)
+                    total += len(chunk)
+        if total < 1000:
+            raise RuntimeError(f'Downloaded file too small ({total} bytes) – URL may be expired or blocked')
+        return total
 
     try:
-        # Download both streams in parallel
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-            vf = pool.submit(download_file, video_url, video_path)
-            af = pool.submit(download_file, audio_url, audio_path)
-            vf.result(timeout=300)
-            af.result(timeout=300)
+        # Download video and audio in parallel
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            vfut = pool.submit(download_file, video_url, video_path)
+            afut = pool.submit(download_file, audio_url, audio_path)
+            video_bytes = vfut.result(timeout=300)
+            audio_bytes = afut.result(timeout=300)
+        print(f'proxy-merge: downloaded video={video_bytes}B audio={audio_bytes}B')
 
-        # Merge with ffmpeg
-        ffmpeg_cmd = [
-            'ffmpeg', '-y',
-            '-i', video_path,
-            '-i', audio_path,
-            '-c:v', 'copy',
-            '-c:a', 'aac',
-            '-shortest',
-            output_path
-        ]
-        result = subprocess.run(ffmpeg_cmd, capture_output=True, timeout=300)
+        def run_ffmpeg(extra_audio_args):
+            cmd = [
+                'ffmpeg', '-y',
+                '-i', video_path,
+                '-i', audio_path,
+                '-c:v', 'copy',
+            ] + extra_audio_args + [
+                '-shortest',
+                '-movflags', '+faststart',
+                output_path
+            ]
+            r = subprocess.run(cmd, capture_output=True, timeout=300)
+            return r
+
+        # Try 1: copy both streams (fastest – works if audio is already AAC)
+        result = run_ffmpeg(['-c:a', 'copy'])
         if result.returncode != 0:
-            raise RuntimeError(f'ffmpeg failed: {result.stderr.decode()[:500]}')
+            print('ffmpeg copy failed, re-encoding audio to AAC...')
+            # Try 2: re-encode audio to AAC (handles opus/webm/vorbis audio)
+            result = run_ffmpeg(['-c:a', 'aac', '-b:a', '192k'])
 
-        # Stream the merged file to browser
+        if result.returncode != 0:
+            # Show LAST 800 chars – that's where actual error is (after version header)
+            err_tail = result.stderr.decode('utf-8', errors='replace')[-800:]
+            raise RuntimeError(f'ffmpeg failed:\n{err_tail}')
+
+        if not os.path.exists(output_path) or os.path.getsize(output_path) < 1000:
+            raise RuntimeError('ffmpeg produced empty output file')
+
+        # Stream merged file to browser
         def stream_merged():
             try:
                 with open(output_path, 'rb') as f:
@@ -721,12 +745,7 @@ def proxy_merge():
                             break
                         yield chunk
             finally:
-                # Cleanup temp files
-                import shutil
-                try:
-                    shutil.rmtree(tmp_dir, ignore_errors=True)
-                except Exception:
-                    pass
+                shutil.rmtree(tmp_dir, ignore_errors=True)
 
         file_size = os.path.getsize(output_path)
         safe_fn = filename.replace('"', "'").replace('\n', '').replace('\r', '')
@@ -737,9 +756,9 @@ def proxy_merge():
         return resp
 
     except Exception as e:
-        import shutil
         shutil.rmtree(tmp_dir, ignore_errors=True)
         return jsonify({'error': f'Merge failed: {str(e)}'}), 503
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
