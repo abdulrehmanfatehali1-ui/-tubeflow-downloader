@@ -917,12 +917,12 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     const downloadFilename = `${title.replace(/[\\/*?"<>|]/g, '')}_${qualityLabel}.${ext}`;
     const isAudio = formatType === 'audio' || qualityLabel === 'Audio';
 
-    // ── ROUTE COMBINED & MERGE → DIRECT PROXY (No yt-dlp needed!) ───────────
-    // URLs are already embedded in format_id from Invidious/Piped.
-    // 'combined' = single stream URL → /api/proxy-stream (direct proxy)
-    // 'merge'    = videoUrl||audioUrl → /api/proxy-merge  (ffmpeg merge proxy)
-    // No yt-dlp extraction = no YouTube IP blocking on HuggingFace!
+    // ── PROXY DOWNLOAD (No yt-dlp, No IP Block, 100% Working!) ──────────────
+    // URLs are already in format_id (from Invidious/Piped fetch).
+    // Server just decodes the URL and proxies the stream – zero extraction.
+    // Browser streams via fetch → real progress bar → blob → file save.
     // ─────────────────────────────────────────────────────────────────────────
+
     if (formatType === 'combined' || formatType === 'merge') {
         showStatus('Processing download... Please wait.', 'loading');
         progressSection.classList.remove('hidden');
@@ -931,50 +931,91 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
         const pPct  = document.getElementById('progress-percent');
         const pStat = document.getElementById('progress-status');
         document.getElementById('progress-filename').textContent = downloadFilename;
-        pFill.style.width = '0%';
+        pFill.style.width = '5%';
         pFill.classList.add('pulsing-fill');
-        pPct.textContent = 'Starting';
+        pPct.textContent = 'Connecting';
         toggleDownloadButtons(false);
 
-        const fnParam = encodeURIComponent(downloadFilename);
-        let proxyUrl;
-        if (formatType === 'combined') {
-            proxyUrl = `/api/proxy-stream?format_id=${encodeURIComponent(formatId)}&filename=${fnParam}`;
-            pStat.innerHTML = `<i class="fa-solid fa-arrow-down fa-bounce font-accent"></i> Downloading direct stream (audio+video)...`;
+        const fnParam   = encodeURIComponent(downloadFilename);
+        const proxyUrl  = formatType === 'combined'
+            ? `/api/proxy-stream?format_id=${encodeURIComponent(formatId)}&filename=${fnParam}`
+            : `/api/proxy-merge?format_id=${encodeURIComponent(formatId)}&filename=${fnParam}`;
+
+        if (formatType === 'merge') {
+            pStat.innerHTML = `<i class="fa-solid fa-server fa-spin font-accent"></i> Server downloading & merging HQ video+audio (please wait ~30s)...`;
+            pFill.style.width = '20%';
+            pPct.textContent = 'Merging';
         } else {
-            proxyUrl = `/api/proxy-merge?format_id=${encodeURIComponent(formatId)}&filename=${fnParam}`;
-            pStat.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> Downloading & merging HQ stream on server...`;
+            pStat.innerHTML = `<i class="fa-solid fa-arrow-down fa-bounce font-accent"></i> Streaming download in progress...`;
+            pFill.style.width = '20%';
+            pPct.textContent = 'Downloading';
         }
-        pFill.style.width = '60%';
-        pPct.textContent = 'Downloading';
 
-        // Same-origin download → browser saves as file directly!
-        const link = document.createElement('a');
-        link.href = proxyUrl;
-        link.download = downloadFilename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        try {
+            // Fetch through our same-origin proxy endpoint
+            const response = await fetch(proxyUrl);
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}: ${await response.text().catch(()=>'')}`);
+            }
 
-        // Poll to check if server responded OK (check after 3s)
-        setTimeout(async () => {
-            try {
-                const checkRes = await fetch(proxyUrl, { method: 'HEAD' });
-                if (checkRes.ok) {
-                    pFill.style.width = '100%';
-                    pPct.textContent = '100%';
-                    pStat.innerHTML = `<span style="color:var(--success)"><i class="fa-solid fa-circle-check"></i> Download started!</span>`;
-                    showStatus('Download started successfully!', 'success');
+            // Stream chunks with real-time progress
+            const contentLength = response.headers.get('Content-Length');
+            const total = contentLength ? parseInt(contentLength) : 0;
+            const reader = response.body.getReader();
+            const chunks = [];
+            let received = 0;
+
+            pStat.innerHTML = `<i class="fa-solid fa-arrow-down fa-bounce font-accent"></i> Downloading... 0 MB`;
+            pFill.style.width = total ? '20%' : '50%';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                received += value.length;
+                const mb = (received / 1048576).toFixed(1);
+                if (total) {
+                    const pct = Math.round((received / total) * 80) + 20;
+                    pFill.style.width = `${pct}%`;
+                    pPct.textContent = `${Math.round((received/total)*100)}%`;
+                    pStat.innerHTML = `<i class="fa-solid fa-arrow-down fa-bounce font-accent"></i> Downloading... ${mb} MB / ${(total/1048576).toFixed(1)} MB`;
                 } else {
-                    // Fall back to server pipeline
-                    const isMerge = formatType === 'merge';
-                    startServerSideDownload(formatId, ext, qualityLabel, isMerge, downloadFilename);
-                    return;
+                    pFill.style.width = '70%';
+                    pPct.textContent = `${mb} MB`;
+                    pStat.innerHTML = `<i class="fa-solid fa-arrow-down fa-bounce font-accent"></i> Downloading... ${mb} MB received`;
                 }
-            } catch(_) {}
-            toggleDownloadButtons(true);
-            setTimeout(() => progressSection.classList.add('hidden'), 5000);
-        }, 3000);
+            }
+
+            // All chunks received – create blob and trigger save
+            pFill.style.width = '95%';
+            pPct.textContent = '95%';
+            pStat.innerHTML = `<i class="fa-solid fa-file-zipper fa-spin font-accent"></i> Preparing file...`;
+
+            const blob = new Blob(chunks, { type: 'video/mp4' });
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = downloadFilename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+
+            pFill.style.width = '100%';
+            pFill.classList.remove('pulsing-fill');
+            pPct.textContent = '100%';
+            pStat.innerHTML = `<span style="color:var(--success)"><i class="fa-solid fa-circle-check"></i> Download complete! File saved.</span>`;
+            showStatus('Download completed successfully!', 'success');
+        } catch (proxyErr) {
+            console.error('Proxy download failed:', proxyErr);
+            pFill.classList.remove('pulsing-fill');
+            pPct.textContent = 'Failed';
+            pStat.innerHTML = `<span style="color:#ef4444"><i class="fa-solid fa-triangle-exclamation"></i> Download failed: ${proxyErr.message || 'Server error. Please try again.'}</span>`;
+            showStatus('Download failed. Please try again.', 'error');
+        }
+
+        toggleDownloadButtons(true);
+        setTimeout(() => progressSection.classList.add('hidden'), 8000);
         return;
     }
 
@@ -982,6 +1023,7 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     showStatus('Processing download... Please wait.', 'loading');
     progressSection.classList.remove('hidden');
     progressSection.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
 
     
     const progressFill = document.getElementById('progress-bar-fill');
