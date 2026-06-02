@@ -944,20 +944,32 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
         return;
     }
 
-    // ── COBALT API DOWNLOAD ───────────────────────────────────────────
-    // For googlevideo.com URLs (from Invidious/Piped), ask Cobalt to
-    // tunnel/merge them — Cobalt's servers are not blocked by Google
-    // ─────────────────────────────────────────────────────────────────
-    progressStatus.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> Routing through Cobalt high-speed tunnel...`;
-    progressFill.style.width = '40%';
+    // ── COBALT API STREAM PROXY (Server proxies stream – same-origin download!) ──
+    // /api/cobalt-stream calls Cobalt server-side, then streams back through OUR
+    // server. The browser downloads from localhost (same-origin), so <a download>
+    // works perfectly – no new tab, no CORS block, audio+video fully merged!
+    // ─────────────────────────────────────────────────────────────────────────────
+    progressStatus.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> Requesting merged stream from Cobalt (audio+video)...`;
+    progressFill.style.width = '30%';
     progressPercent.textContent = 'Connecting';
 
     try {
-        const cobaltData = await getCobaltMergedLink(url, qualityLabel, isAudio);
-        doDirectDownload(cobaltData.url, downloadFilename);
+        const audioParam = isAudio ? '&audio=true' : '';
+        const qualityParam = encodeURIComponent(qualityLabel || '720p');
+        const filenameParam = encodeURIComponent(downloadFilename);
+        // Build the stream URL — browser will download this directly from our server
+        const streamUrl = `/api/cobalt-stream?url=${encodeURIComponent(url)}&quality=${qualityParam}${audioParam}&filename=${filenameParam}`;
+
+        // Show downloading state immediately
+        progressStatus.innerHTML = `<i class="fa-solid fa-arrow-down fa-bounce font-accent"></i> Downloading via secure server stream (audio+video merged)...`;
+        progressFill.style.width = '70%';
+        progressPercent.textContent = 'Downloading';
+
+        // This is same-origin, so <a download> triggers a proper file save dialog
+        doDirectDownload(streamUrl, downloadFilename);
         return;
-    } catch (cobaltErr) {
-        console.warn('Cobalt tunnel failed:', cobaltErr);
+    } catch (streamErr) {
+        console.warn('Server Cobalt stream proxy failed:', streamErr);
     }
 
     // ── LAST RESORT: Direct link click ───────────────────────────────
@@ -975,6 +987,7 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     progressStatus.innerHTML = `<span style="color:#ef4444"><i class="fa-solid fa-triangle-exclamation"></i> Download failed. Please try a different format.</span>`;
     toggleDownloadButtons(true);
 }
+
 
 // Secure Server-Side download & merge manager with realtime progress polling
 

@@ -566,6 +566,199 @@ def get_debug_logs():
     except Exception as e:
         return str(e), 500
 
+# ─────────────────────────────────────────────────────────────────────────────
+# /api/cobalt-tunnel  –  Server-side Cobalt API caller (no CORS limitations!)
+#   Browser cannot POST to Cobalt due to CORS restrictions on many instances.
+#   This endpoint calls Cobalt from the server (server IPs are not restricted
+#   by Cobalt) and returns the final stream/download URL as JSON.
+#   The browser then triggers a native <a download> against that URL.
+# ─────────────────────────────────────────────────────────────────────────────
+@app.route('/api/cobalt-tunnel')
+def cobalt_tunnel():
+    url = request.args.get('url', '').strip()
+    quality = request.args.get('quality', '720p').strip()
+    is_audio = request.args.get('audio', 'false').lower() == 'true'
+
+    if not url:
+        return jsonify({'error': 'No URL provided'}), 400
+
+    # Map quality label → Cobalt videoQuality value
+    quality_map = {
+        '2160p': '2160', '4k': '2160',
+        '1440p': '1440', '1080p': '1080',
+        '720p': '720', '480p': '480',
+        '360p': '360', '240p': '240', '144p': '144'
+    }
+    video_quality = quality_map.get(quality.lower(), '720')
+    download_mode = 'audio' if is_audio else 'auto'
+    audio_format = 'mp3' if is_audio else 'best'
+
+    payload = {
+        'url': url,
+        'videoQuality': video_quality,
+        'audioFormat': audio_format,
+        'downloadMode': download_mode,
+        'filenameStyle': 'pretty',
+        'disableMetadata': False
+    }
+    headers = {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
+
+    cobalt_instances = [
+        'https://co.wuk.sh',
+        'https://api.cobalt.tools',
+        'https://cobalt.api.ryz.cx',
+        'https://cobalt.best',
+        'https://cobalt.flxbl.io',
+        'https://cobalt.urdh.dev',
+        'https://dl.cgm.rs'
+    ]
+
+    for instance in cobalt_instances:
+        try:
+            target = f"{instance}/api/json"
+            if curl_requests:
+                resp = curl_requests.post(target, headers=headers, json=payload, impersonate="chrome", timeout=8)
+            else:
+                resp = requests.post(target, headers=headers, json=payload, timeout=8)
+
+            if resp.status_code == 200:
+                data = resp.json()
+                status = data.get('status', '')
+                if status in ('stream', 'redirect', 'tunnel'):
+                    dl_url = data.get('url') or data.get('tunnel')
+                    filename = data.get('filename', 'download.mp4')
+                    return jsonify({'url': dl_url, 'filename': filename, 'instance': instance})
+                elif status == 'picker':
+                    # Picker = multiple streams (audio+video separate) – take first
+                    items = data.get('picker', [])
+                    if items:
+                        dl_url = items[0].get('url') or items[0].get('tunnel')
+                        filename = data.get('filename', 'download.mp4')
+                        return jsonify({'url': dl_url, 'filename': filename, 'instance': instance})
+        except Exception:
+            continue
+
+    return jsonify({'error': 'All Cobalt instances failed. Please try again.'}), 503
+
+
+# /api/cobalt-stream  –  Full server-side proxy: downloads from Cobalt and streams
+#   back to browser via chunked transfer. This solves cross-origin download issues.
+#   The browser downloads from OUR server (same origin), not from Cobalt's CDN,
+#   so `<a download>` works perfectly, no new tab, audio+video fully merged.
+# ─────────────────────────────────────────────────────────────────────────────
+@app.route('/api/cobalt-stream')
+def cobalt_stream():
+    url = request.args.get('url', '').strip()
+    quality = request.args.get('quality', '720p').strip()
+    is_audio = request.args.get('audio', 'false').lower() == 'true'
+    filename = request.args.get('filename', '').strip() or 'download.mp4'
+
+    if not url:
+        return jsonify({'error': 'No URL provided'}), 400
+
+    # Map quality label → Cobalt videoQuality value
+    quality_map = {
+        '2160p': '2160', '4k': '2160',
+        '1440p': '1440', '1080p': '1080',
+        '720p': '720', '480p': '480',
+        '360p': '360', '240p': '240', '144p': '144'
+    }
+    video_quality = quality_map.get(quality.lower(), '720')
+    download_mode = 'audio' if is_audio else 'auto'
+    audio_format = 'mp3' if is_audio else 'best'
+
+    payload = {
+        'url': url,
+        'videoQuality': video_quality,
+        'audioFormat': audio_format,
+        'downloadMode': download_mode,
+        'filenameStyle': 'pretty',
+        'disableMetadata': False
+    }
+    api_headers = {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
+
+    cobalt_instances = [
+        'https://co.wuk.sh',
+        'https://api.cobalt.tools',
+        'https://cobalt.api.ryz.cx',
+        'https://cobalt.best',
+        'https://cobalt.flxbl.io',
+        'https://cobalt.urdh.dev',
+        'https://dl.cgm.rs'
+    ]
+
+    stream_url = None
+    cobalt_filename = filename
+
+    # Step 1: Ask Cobalt for a download URL
+    for instance in cobalt_instances:
+        try:
+            target = f"{instance}/api/json"
+            if curl_requests:
+                resp = curl_requests.post(target, headers=api_headers, json=payload, impersonate="chrome", timeout=10)
+            else:
+                resp = requests.post(target, headers=api_headers, json=payload, timeout=10)
+
+            if resp.status_code == 200:
+                data = resp.json()
+                status = data.get('status', '')
+                if status in ('stream', 'redirect', 'tunnel'):
+                    stream_url = data.get('url') or data.get('tunnel')
+                    cobalt_filename = data.get('filename', filename)
+                    break
+                elif status == 'picker':
+                    items = data.get('picker', [])
+                    if items:
+                        stream_url = items[0].get('url') or items[0].get('tunnel')
+                        cobalt_filename = data.get('filename', filename)
+                        break
+        except Exception:
+            continue
+
+    if not stream_url:
+        return jsonify({'error': 'All Cobalt instances failed. Please try again.'}), 503
+
+    # Step 2: Stream the Cobalt URL back to the browser through our server
+    # This makes it same-origin → browser saves it as a file (no new tab!)
+    def generate_stream():
+        stream_headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': '*/*',
+            'Accept-Encoding': 'identity',
+            'Connection': 'keep-alive'
+        }
+        try:
+            if curl_requests:
+                r = curl_requests.get(stream_url, headers=stream_headers, impersonate="chrome", stream=True, timeout=300)
+            else:
+                r = requests.get(stream_url, headers=stream_headers, stream=True, timeout=300)
+            for chunk in r.iter_content(chunk_size=65536):
+                if chunk:
+                    yield chunk
+        except Exception as e:
+            print(f"cobalt-stream proxy error: {e}")
+
+    # Sanitize filename for Content-Disposition header
+    safe_filename = cobalt_filename.replace('"', "'").replace('\n', '').replace('\r', '')
+    content_type = 'audio/mpeg' if is_audio else 'video/mp4'
+
+    response = Response(
+        stream_with_context(generate_stream()),
+        content_type=content_type
+    )
+    response.headers['Content-Disposition'] = f'attachment; filename="{safe_filename}"'
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no'
+    return response
+
 @app.route('/')
 def index():
     return render_template('index.html')
