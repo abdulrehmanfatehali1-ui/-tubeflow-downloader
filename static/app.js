@@ -944,12 +944,12 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
         return;
     }
 
-    // ── COBALT API STREAM PROXY (Server proxies stream – same-origin download!) ──
-    // /api/cobalt-stream calls Cobalt server-side, then streams back through OUR
-    // server. The browser downloads from localhost (same-origin), so <a download>
-    // works perfectly – no new tab, no CORS block, audio+video fully merged!
-    // ─────────────────────────────────────────────────────────────────────────────
-    progressStatus.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> Requesting merged stream from Cobalt (audio+video)...`;
+    // ── YT-DLP STREAM PROXY (Primary – Server resolves + proxies stream!) ────
+    // Server uses yt-dlp to resolve the best combined video+audio URL, then
+    // streams it back through OUR server. Browser downloads from localhost
+    // (same-origin) → proper file save dialog, no new tab, audio+video merged!
+    // ─────────────────────────────────────────────────────────────────────────
+    progressStatus.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> Resolving stream via yt-dlp (audio+video merged)...`;
     progressFill.style.width = '30%';
     progressPercent.textContent = 'Connecting';
 
@@ -957,15 +957,27 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
         const audioParam = isAudio ? '&audio=true' : '';
         const qualityParam = encodeURIComponent(qualityLabel || '720p');
         const filenameParam = encodeURIComponent(downloadFilename);
-        // Build the stream URL — browser will download this directly from our server
-        const streamUrl = `/api/cobalt-stream?url=${encodeURIComponent(url)}&quality=${qualityParam}${audioParam}&filename=${filenameParam}`;
+        // /api/ytdlp-stream: server resolves + proxies the stream (same-origin)
+        const ytdlpStreamUrl = `/api/ytdlp-stream?url=${encodeURIComponent(url)}&quality=${qualityParam}${audioParam}&filename=${filenameParam}`;
 
-        // Show downloading state immediately
-        progressStatus.innerHTML = `<i class="fa-solid fa-arrow-down fa-bounce font-accent"></i> Downloading via secure server stream (audio+video merged)...`;
+        progressStatus.innerHTML = `<i class="fa-solid fa-arrow-down fa-bounce font-accent"></i> Downloading merged stream (audio+video)...`;
         progressFill.style.width = '70%';
         progressPercent.textContent = 'Downloading';
 
-        // This is same-origin, so <a download> triggers a proper file save dialog
+        doDirectDownload(ytdlpStreamUrl, downloadFilename);
+        return;
+    } catch (ytErr) {
+        console.warn('yt-dlp stream proxy failed:', ytErr);
+    }
+
+    // ── COBALT STREAM PROXY (Fallback) ────────────────────────────────────────
+    try {
+        const audioParam = isAudio ? '&audio=true' : '';
+        const qualityParam = encodeURIComponent(qualityLabel || '720p');
+        const filenameParam = encodeURIComponent(downloadFilename);
+        const streamUrl = `/api/cobalt-stream?url=${encodeURIComponent(url)}&quality=${qualityParam}${audioParam}&filename=${filenameParam}`;
+
+        progressStatus.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> Fallback: routing via Cobalt server stream...`;
         doDirectDownload(streamUrl, downloadFilename);
         return;
     } catch (streamErr) {
@@ -973,9 +985,6 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     }
 
     // ── LAST RESORT: Direct link click ───────────────────────────────
-    // Works for same-origin or open-cors URLs, may open in new tab for
-    // cross-origin streams — but at least it won't buffer forever.
-    // ─────────────────────────────────────────────────────────────────
     if (sourceUrl) {
         progressStatus.innerHTML = `<i class="fa-solid fa-arrow-up-right-from-square fa-spin font-accent"></i> Triggering direct stream download...`;
         doDirectDownload(sourceUrl, downloadFilename);
@@ -987,6 +996,7 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     progressStatus.innerHTML = `<span style="color:#ef4444"><i class="fa-solid fa-triangle-exclamation"></i> Download failed. Please try a different format.</span>`;
     toggleDownloadButtons(true);
 }
+
 
 
 // Secure Server-Side download & merge manager with realtime progress polling

@@ -566,6 +566,93 @@ def get_debug_logs():
     except Exception as e:
         return str(e), 500
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /api/ytdlp-stream  –  yt-dlp powered server-side stream proxy
+#   Uses yt-dlp to resolve the best combined video+audio URL, then streams
+#   it back through our server (same-origin). Browser gets a proper
+#   Content-Disposition: attachment response → saves as file directly.
+#   No Cobalt, no CORS, no new tabs. Works reliably on HuggingFace!
+# ─────────────────────────────────────────────────────────────────────────────
+@app.route('/api/ytdlp-stream')
+def ytdlp_stream():
+    url = request.args.get('url', '').strip()
+    quality = request.args.get('quality', '720p').strip()
+    is_audio = request.args.get('audio', 'false').lower() == 'true'
+    filename = request.args.get('filename', '').strip() or 'download.mp4'
+
+    if not url:
+        return jsonify({'error': 'No URL provided'}), 400
+
+    # Map quality label → yt-dlp format selector
+    quality_map = {
+        '2160p': '2160', '4k': '2160',
+        '1440p': '1440', '1080p': '1080',
+        '720p': '720', '480p': '480',
+        '360p': '360', '240p': '240', '144p': '144'
+    }
+    height = quality_map.get(quality.lower(), '720')
+
+    if is_audio:
+        # Best audio only
+        fmt = 'bestaudio[ext=m4a]/bestaudio/best'
+        content_type = 'audio/mp4'
+        safe_ext = 'm4a'
+    else:
+        # Best combined single-file stream at requested height (no merge needed)
+        fmt = f'best[height<={height}][ext=mp4]/best[height<={height}]/best[ext=mp4]/best'
+        content_type = 'video/mp4'
+        safe_ext = 'mp4'
+
+    try:
+        ydl_opts = get_ydl_opts({
+            'format': fmt,
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': False,
+        })
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            stream_url = info.get('url')
+            ext = info.get('ext', safe_ext)
+            video_title = info.get('title', 'download')
+            # Sanitize filename
+            safe_title = re.sub(r'[\\/*?"<>|]', '', video_title)[:80]
+            dl_filename = f"{safe_title}_{quality}.{ext}"
+    except Exception as e:
+        return jsonify({'error': f'yt-dlp extraction failed: {str(e)}'}), 503
+
+    if not stream_url:
+        return jsonify({'error': 'Could not resolve stream URL'}), 503
+
+    def generate_stream():
+        stream_headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': '*/*',
+            'Accept-Encoding': 'identity',
+            'Referer': 'https://www.youtube.com/',
+            'Connection': 'keep-alive'
+        }
+        try:
+            r = requests.get(stream_url, headers=stream_headers, stream=True, timeout=300)
+            for chunk in r.iter_content(chunk_size=65536):
+                if chunk:
+                    yield chunk
+        except Exception as ex:
+            print(f"ytdlp-stream proxy error: {ex}")
+
+    safe_dl_filename = dl_filename.replace('"', "'").replace('\n', '').replace('\r', '')
+    resp = Response(
+        stream_with_context(generate_stream()),
+        content_type=content_type
+    )
+    resp.headers['Content-Disposition'] = f'attachment; filename="{safe_dl_filename}"'
+    resp.headers['Cache-Control'] = 'no-cache'
+    resp.headers['X-Accel-Buffering'] = 'no'
+    return resp
+
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # /api/cobalt-tunnel  –  Server-side Cobalt API caller (no CORS limitations!)
 #   Browser cannot POST to Cobalt due to CORS restrictions on many instances.
