@@ -216,16 +216,28 @@ function parseInvidiousClientSide(data, url) {
         });
     });
     
+    // Collect best audio URL from adaptiveFormats for merge encoding
+    let bestAudioUrl = '';
+    (data.adaptiveFormats || []).forEach(f => {
+        const mime = f.type || '';
+        if (mime.includes('audio/') && f.url) {
+            // Prefer m4a/mp4 audio, take first match
+            if (!bestAudioUrl || mime.includes('audio/mp4')) {
+                bestAudioUrl = f.url;
+            }
+        }
+    });
+
     // Process adaptiveFormats (Separate video-only and audio-only)
     (data.adaptiveFormats || []).forEach(f => {
         const mime = f.type || '';
         const ext = f.container || 'mp4';
-        const payload = `${f.url}|${title}|${ext}`;
-        const encoded_id = btoa(unescape(encodeURIComponent(payload)));
         
         if (mime.includes('audio/')) {
             const quality = f.audioQuality || 'High Quality';
             const bitrate = Math.floor(parseInt(f.bitrate || 0) / 1000);
+            const payload = `${f.url}|${title}|${ext}`;
+            const encoded_id = btoa(unescape(encodeURIComponent(payload)));
             
             let size = parseInt(f.size) || 0;
             if (!size || size < 10000) {
@@ -242,13 +254,16 @@ function parseInvidiousClientSide(data, url) {
             });
         } else if (mime.includes('video/')) {
             const quality = f.qualityLabel || '360p';
+            // Encode BOTH video URL and best audio URL → server can merge without yt-dlp!
+            // Format: videoUrl||audioUrl|title|ext
+            const payload = `${f.url}||${bestAudioUrl}|${title}|${ext}`;
+            const encoded_id = btoa(unescape(encodeURIComponent(payload)));
             
             let size = parseInt(f.size) || 0;
             if (!size || size < 50000) {
                 size = estimateSize(quality, duration);
             }
             
-            // This is video-only! We treat it as a merge format so the server merges it with audio
             video_formats.push({
                 format_id: encoded_id,
                 ext: 'mp4',
@@ -294,11 +309,30 @@ function parsePipedClientSide(data, url) {
     const video_formats = [];
     const audio_formats = [];
     
+    // Collect best audio URL from audioStreams for merge encoding
+    let bestAudioUrlPiped = '';
+    (data.audioStreams || []).forEach(f => {
+        const mime = f.mimeType || '';
+        if (f.url) {
+            if (!bestAudioUrlPiped || mime.includes('audio/mp4')) {
+                bestAudioUrlPiped = f.url;
+            }
+        }
+    });
+
     (data.videoStreams || []).forEach(f => {
         const mime = f.mimeType || '';
         const ext = mime.includes('video/mp4') ? 'mp4' : 'webm';
         const quality = f.quality || '360p';
-        const payload = `${f.url}|${title}|${ext}`;
+        const isVideoOnly = f.videoOnly === true;
+        
+        let payload;
+        if (isVideoOnly) {
+            // Encode BOTH video + best audio URL → server merges without yt-dlp!
+            payload = `${f.url}||${bestAudioUrlPiped}|${title}|${ext}`;
+        } else {
+            payload = `${f.url}|${title}|${ext}`;
+        }
         const encoded_id = btoa(unescape(encodeURIComponent(payload)));
         
         let size = parseInt(f.size) || 0;
@@ -310,8 +344,6 @@ function parsePipedClientSide(data, url) {
                 size = estimateSize(quality, duration);
             }
         }
-        
-        const isVideoOnly = f.videoOnly === true;
         
         video_formats.push({
             format_id: encoded_id,
@@ -885,22 +917,64 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     const downloadFilename = `${title.replace(/[\\/*?"<>|]/g, '')}_${qualityLabel}.${ext}`;
     const isAudio = formatType === 'audio' || qualityLabel === 'Audio';
 
-    // ── ROUTE HQ MERGE & COMBINED → SERVER PIPELINE ──────────────────────────
-    // For formats that need ffmpeg merging OR are large combined streams,
-    // use the proven server-side download pipeline with real-time progress.
-    // This avoids "Site wasn't available" from failed stream proxies.
+    // ── ROUTE COMBINED & MERGE → DIRECT PROXY (No yt-dlp needed!) ───────────
+    // URLs are already embedded in format_id from Invidious/Piped.
+    // 'combined' = single stream URL → /api/proxy-stream (direct proxy)
+    // 'merge'    = videoUrl||audioUrl → /api/proxy-merge  (ffmpeg merge proxy)
+    // No yt-dlp extraction = no YouTube IP blocking on HuggingFace!
     // ─────────────────────────────────────────────────────────────────────────
-    if (formatType === 'merge' || formatType === 'combined') {
+    if (formatType === 'combined' || formatType === 'merge') {
         showStatus('Processing download... Please wait.', 'loading');
         progressSection.classList.remove('hidden');
         progressSection.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        document.getElementById('progress-bar-fill').style.width = '0%';
-        document.getElementById('progress-bar-fill').classList.add('pulsing-fill');
-        document.getElementById('progress-percent').textContent = 'Starting';
+        const pFill = document.getElementById('progress-bar-fill');
+        const pPct  = document.getElementById('progress-percent');
+        const pStat = document.getElementById('progress-status');
         document.getElementById('progress-filename').textContent = downloadFilename;
+        pFill.style.width = '0%';
+        pFill.classList.add('pulsing-fill');
+        pPct.textContent = 'Starting';
         toggleDownloadButtons(false);
-        const isMerge = formatType === 'merge';
-        startServerSideDownload(formatId, ext, qualityLabel, isMerge, downloadFilename);
+
+        const fnParam = encodeURIComponent(downloadFilename);
+        let proxyUrl;
+        if (formatType === 'combined') {
+            proxyUrl = `/api/proxy-stream?format_id=${encodeURIComponent(formatId)}&filename=${fnParam}`;
+            pStat.innerHTML = `<i class="fa-solid fa-arrow-down fa-bounce font-accent"></i> Downloading direct stream (audio+video)...`;
+        } else {
+            proxyUrl = `/api/proxy-merge?format_id=${encodeURIComponent(formatId)}&filename=${fnParam}`;
+            pStat.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> Downloading & merging HQ stream on server...`;
+        }
+        pFill.style.width = '60%';
+        pPct.textContent = 'Downloading';
+
+        // Same-origin download → browser saves as file directly!
+        const link = document.createElement('a');
+        link.href = proxyUrl;
+        link.download = downloadFilename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        // Poll to check if server responded OK (check after 3s)
+        setTimeout(async () => {
+            try {
+                const checkRes = await fetch(proxyUrl, { method: 'HEAD' });
+                if (checkRes.ok) {
+                    pFill.style.width = '100%';
+                    pPct.textContent = '100%';
+                    pStat.innerHTML = `<span style="color:var(--success)"><i class="fa-solid fa-circle-check"></i> Download started!</span>`;
+                    showStatus('Download started successfully!', 'success');
+                } else {
+                    // Fall back to server pipeline
+                    const isMerge = formatType === 'merge';
+                    startServerSideDownload(formatId, ext, qualityLabel, isMerge, downloadFilename);
+                    return;
+                }
+            } catch(_) {}
+            toggleDownloadButtons(true);
+            setTimeout(() => progressSection.classList.add('hidden'), 5000);
+        }, 3000);
         return;
     }
 

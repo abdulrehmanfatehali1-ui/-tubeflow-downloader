@@ -568,6 +568,181 @@ def get_debug_logs():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# /api/proxy-stream  –  Direct stream proxy (no yt-dlp, no extraction!)
+#   Decodes format_id (base64 of "url|title|ext") and proxies the stream
+#   back to the browser. Used for 'combined' formats (pre-merged video+audio).
+#   Zero yt-dlp extraction needed → no YouTube IP blocking issues!
+# ─────────────────────────────────────────────────────────────────────────────
+@app.route('/api/proxy-stream')
+def proxy_stream():
+    format_id = request.args.get('format_id', '').strip()
+    filename   = request.args.get('filename', 'download.mp4').strip()
+
+    if not format_id:
+        return jsonify({'error': 'No format_id provided'}), 400
+
+    try:
+        decoded = base64.b64decode(format_id + '==').decode('utf-8', errors='replace')
+        # Format: "url|title|ext"
+        parts = decoded.split('|')
+        stream_url = parts[0]
+    except Exception as e:
+        return jsonify({'error': f'Could not decode format_id: {e}'}), 400
+
+    if not stream_url or not stream_url.startswith('http'):
+        return jsonify({'error': 'Invalid stream URL in format_id'}), 400
+
+    def generate():
+        hdrs = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': '*/*',
+            'Accept-Encoding': 'identity',
+            'Referer': 'https://www.youtube.com/',
+        }
+        try:
+            r = requests.get(stream_url, headers=hdrs, stream=True, timeout=300)
+            for chunk in r.iter_content(chunk_size=65536):
+                if chunk:
+                    yield chunk
+        except Exception as ex:
+            print(f'proxy-stream error: {ex}')
+
+    safe_fn = filename.replace('"', "'").replace('\n', '').replace('\r', '')
+    resp = Response(stream_with_context(generate()), content_type='video/mp4')
+    resp.headers['Content-Disposition'] = f'attachment; filename="{safe_fn}"'
+    resp.headers['Cache-Control'] = 'no-cache'
+    resp.headers['X-Accel-Buffering'] = 'no'
+    return resp
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# /api/proxy-merge  –  Server-side video+audio merge proxy (no yt-dlp!)
+#   Decodes format_id (base64 of "videoUrl||audioUrl|title|ext"), downloads
+#   both streams to temp files, merges with ffmpeg, streams result to browser.
+#   No yt-dlp extraction at all → no YouTube IP blocking on HuggingFace!
+# ─────────────────────────────────────────────────────────────────────────────
+@app.route('/api/proxy-merge')
+def proxy_merge():
+    format_id = request.args.get('format_id', '').strip()
+    filename   = request.args.get('filename', 'download.mp4').strip()
+
+    if not format_id:
+        return jsonify({'error': 'No format_id provided'}), 400
+
+    try:
+        decoded = base64.b64decode(format_id + '==').decode('utf-8', errors='replace')
+        # Format: "videoUrl||audioUrl|title|ext"
+        if '||' in decoded:
+            video_url, rest = decoded.split('||', 1)
+            audio_url = rest.split('|')[0]
+        else:
+            # Fallback: treat as combined single URL
+            video_url = decoded.split('|')[0]
+            audio_url = ''
+    except Exception as e:
+        return jsonify({'error': f'Could not decode format_id: {e}'}), 400
+
+    if not video_url or not video_url.startswith('http'):
+        return jsonify({'error': 'Invalid video URL in format_id'}), 400
+
+    # If no audio URL available, fall back to proxy-stream (combined)
+    if not audio_url or not audio_url.startswith('http'):
+        def generate_single():
+            hdrs = {
+                'User-Agent': 'Mozilla/5.0',
+                'Accept': '*/*',
+                'Accept-Encoding': 'identity',
+                'Referer': 'https://www.youtube.com/',
+            }
+            try:
+                r = requests.get(video_url, headers=hdrs, stream=True, timeout=300)
+                for chunk in r.iter_content(chunk_size=65536):
+                    if chunk:
+                        yield chunk
+            except Exception as ex:
+                print(f'proxy-merge single error: {ex}')
+
+        safe_fn = filename.replace('"', "'").replace('\n', '').replace('\r', '')
+        resp = Response(stream_with_context(generate_single()), content_type='video/mp4')
+        resp.headers['Content-Disposition'] = f'attachment; filename="{safe_fn}"'
+        resp.headers['Cache-Control'] = 'no-cache'
+        resp.headers['X-Accel-Buffering'] = 'no'
+        return resp
+
+    # Download video and audio to temp files, then merge with ffmpeg
+    tmp_dir = tempfile.mkdtemp()
+    video_path = os.path.join(tmp_dir, 'video_in.mp4')
+    audio_path = os.path.join(tmp_dir, 'audio_in.m4a')
+    output_path = os.path.join(tmp_dir, 'merged_out.mp4')
+
+    def download_file(url, dest):
+        hdrs = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': '*/*',
+            'Accept-Encoding': 'identity',
+            'Referer': 'https://www.youtube.com/',
+        }
+        r = requests.get(url, headers=hdrs, stream=True, timeout=300)
+        with open(dest, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=65536):
+                if chunk:
+                    f.write(chunk)
+
+    try:
+        # Download both streams in parallel
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            vf = pool.submit(download_file, video_url, video_path)
+            af = pool.submit(download_file, audio_url, audio_path)
+            vf.result(timeout=300)
+            af.result(timeout=300)
+
+        # Merge with ffmpeg
+        ffmpeg_cmd = [
+            'ffmpeg', '-y',
+            '-i', video_path,
+            '-i', audio_path,
+            '-c:v', 'copy',
+            '-c:a', 'aac',
+            '-shortest',
+            output_path
+        ]
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, timeout=300)
+        if result.returncode != 0:
+            raise RuntimeError(f'ffmpeg failed: {result.stderr.decode()[:500]}')
+
+        # Stream the merged file to browser
+        def stream_merged():
+            try:
+                with open(output_path, 'rb') as f:
+                    while True:
+                        chunk = f.read(65536)
+                        if not chunk:
+                            break
+                        yield chunk
+            finally:
+                # Cleanup temp files
+                import shutil
+                try:
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+                except Exception:
+                    pass
+
+        file_size = os.path.getsize(output_path)
+        safe_fn = filename.replace('"', "'").replace('\n', '').replace('\r', '')
+        resp = Response(stream_with_context(stream_merged()), content_type='video/mp4')
+        resp.headers['Content-Disposition'] = f'attachment; filename="{safe_fn}"'
+        resp.headers['Content-Length'] = str(file_size)
+        resp.headers['Cache-Control'] = 'no-cache'
+        return resp
+
+    except Exception as e:
+        import shutil
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        return jsonify({'error': f'Merge failed: {str(e)}'}), 503
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # /api/ytdlp-stream  –  yt-dlp powered server-side stream proxy
 #   Uses yt-dlp to resolve the best combined video+audio URL, then streams
 #   it back through our server (same-origin). Browser gets a proper
