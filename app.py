@@ -1880,7 +1880,10 @@ def get_sms_countries():
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
         }
-        r = requests.get(url, headers=headers, timeout=10)
+        if curl_requests:
+            r = curl_requests.get(url, headers=headers, impersonate="chrome", timeout=10)
+        else:
+            r = requests.get(url, headers=headers, timeout=10)
         if r.status_code != 200:
             return jsonify({'error': f'Failed to fetch countries: HTTP {r.status_code}'}), 502
             
@@ -1935,7 +1938,10 @@ def get_sms_numbers():
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
         }
-        r = requests.get(url, headers=headers, timeout=10)
+        if curl_requests:
+            r = curl_requests.get(url, headers=headers, impersonate="chrome", timeout=10)
+        else:
+            r = requests.get(url, headers=headers, timeout=10)
         if r.status_code != 200:
             return jsonify({'error': f'Failed to fetch numbers: HTTP {r.status_code}'}), 502
             
@@ -1997,7 +2003,10 @@ def get_sms_inbox():
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
         }
-        r = requests.get(url, headers=headers, timeout=10)
+        if curl_requests:
+            r = curl_requests.get(url, headers=headers, impersonate="chrome", timeout=10)
+        else:
+            r = requests.get(url, headers=headers, timeout=10)
         if r.status_code != 200:
             return jsonify({'error': f'Failed to fetch messages: HTTP {r.status_code}'}), 502
             
@@ -2060,6 +2069,43 @@ def api_mail_proxy():
         r = requests.get(target_url, headers=headers, timeout=10)
         r.raise_for_status()
         return jsonify(r.json())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# API Mail.tm Proxy Route to bypass direct ISP blocking of Mail.tm (CORS-enabled frontend proxy)
+@app.route('/api/mail/tm/<path:subpath>', methods=['GET', 'POST', 'PUT', 'DELETE'])
+def mail_tm_proxy(subpath):
+    target_url = f"https://api.mail.tm/{subpath}"
+    if request.query_string:
+        target_url += f"?{request.query_string.decode('utf-8')}"
+        
+    headers = {}
+    if 'Authorization' in request.headers:
+        headers['Authorization'] = request.headers['Authorization']
+    headers['Content-Type'] = 'application/json'
+    headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+    
+    data = request.get_data()
+    method = request.method.upper()
+    
+    try:
+        if curl_requests:
+            if method == 'GET':
+                r = curl_requests.get(target_url, headers=headers, impersonate="chrome", timeout=15)
+            elif method == 'POST':
+                r = curl_requests.post(target_url, headers=headers, data=data, impersonate="chrome", timeout=15)
+            elif method == 'DELETE':
+                r = curl_requests.delete(target_url, headers=headers, impersonate="chrome", timeout=15)
+            else:
+                r = curl_requests.request(method, target_url, headers=headers, data=data, impersonate="chrome", timeout=15)
+        else:
+            r = requests.request(method, target_url, headers=headers, data=data, timeout=15)
+            
+        try:
+            return jsonify(r.json()), r.status_code
+        except Exception:
+            return r.text, r.status_code
+            
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

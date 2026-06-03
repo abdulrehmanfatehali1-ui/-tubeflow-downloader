@@ -1979,11 +1979,42 @@ async function initTempMail() {
     }
 }
 
+// Helper client wrapper for Mail.tm via backend proxy route to bypass firewall blocks
+async function fetchMailTM(endpoint, options = {}) {
+    try {
+        const response = await fetch(`/api/mail/tm/${endpoint}`, options);
+        if (!response.ok) {
+            let errorMsg = `HTTP Error ${response.status}`;
+            try {
+                const contentType = response.headers.get('content-type') || '';
+                if (contentType.includes('application/json')) {
+                    const errData = await response.json();
+                    errorMsg = errData.error || errData.message || errorMsg;
+                }
+            } catch (jsonErr) {}
+            throw new Error(errorMsg);
+        }
+        
+        if (response.status === 204) {
+            return null;
+        }
+        
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json') && !contentType.includes('application/ld+json')) {
+            throw new Error('Server returned invalid content format');
+        }
+        
+        return await response.json();
+    } catch (err) {
+        console.error(`Mail.tm proxy error on endpoint [${endpoint}]:`, err);
+        throw err;
+    }
+}
+
 // Fetch available domains from Mail.tm
 async function loadMailDomains() {
     try {
-        const r = await fetch('https://api.mail.tm/domains');
-        const data = await r.json();
+        const data = await fetchMailTM('domains');
         const domains = data['hydra:member'] || [];
         mailDomains = domains.map(d => d.domain);
         
@@ -2066,29 +2097,19 @@ async function spawnNewEmailAddress() {
     
     try {
         // Step 1: Create Account
-        const r1 = await fetch('https://api.mail.tm/accounts', {
+        const r1Data = await fetchMailTM('accounts', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ address: email, password: password })
         });
-        
-        if (!r1.ok) {
-            const errData = await r1.json();
-            throw new Error(errData.message || 'Registration request rejected');
-        }
         
         // Step 2: Get JWT auth token
-        const r2 = await fetch('https://api.mail.tm/token', {
+        const tokenData = await fetchMailTM('token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ address: email, password: password })
         });
         
-        if (!r2.ok) {
-            throw new Error('Token acquisition failed');
-        }
-        
-        const tokenData = await r2.json();
         const token = tokenData.token;
         const accountId = tokenData.id || '';
         
@@ -2205,15 +2226,12 @@ function deleteMailAccount(email) {
 // Refresh token helper if token expires
 async function refreshMailToken(account) {
     try {
-        const r = await fetch('https://api.mail.tm/token', {
+        const data = await fetchMailTM('token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ address: account.email, password: account.password })
         });
-        if (r.ok) {
-            const data = await r.json();
-            return data.token;
-        }
+        return data.token;
     } catch (e) {
         console.error('Failed to refresh token:', e);
     }
@@ -2237,24 +2255,26 @@ async function refreshEmailInbox(silent = false) {
     }
     
     try {
-        const r = await fetch('https://api.mail.tm/messages', {
-            headers: {
-                'Authorization': `Bearer ${account.token}`
+        let data;
+        try {
+            data = await fetchMailTM('messages', {
+                headers: {
+                    'Authorization': `Bearer ${account.token}`
+                }
+            });
+        } catch (err) {
+            // Try to refresh token if unauthorized
+            if (err.message.includes('401') || err.message.includes('Unauthorized') || err.message.includes('HTTP Error 401')) {
+                const refreshedToken = await refreshMailToken(account);
+                if (refreshedToken) {
+                    account.token = refreshedToken;
+                    saveMailAccounts();
+                    return refreshEmailInbox(silent); // Retry fetch
+                }
             }
-        });
-        
-        if (!r.ok) {
-            // Try to refresh token
-            const refreshedToken = await refreshMailToken(account);
-            if (refreshedToken) {
-                account.token = refreshedToken;
-                saveMailAccounts();
-                return refreshEmailInbox(silent); // Retry fetch
-            }
-            throw new Error(`HTTP Error ${r.status}`);
+            throw err;
         }
         
-        const data = await r.json();
         const mailtmMessages = data['hydra:member'] || [];
         
         activeMailMessages = mailtmMessages.map(m => {
@@ -2371,14 +2391,11 @@ async function selectMailMessage(id) {
         if (!account) return;
         
         try {
-            const r = await fetch(`https://api.mail.tm/messages/${id}`, {
+            const data = await fetchMailTM(`messages/${id}`, {
                 headers: {
                     'Authorization': `Bearer ${account.token}`
                 }
             });
-            if (!r.ok) throw new Error(`HTTP Error ${r.status}`);
-            
-            const data = await r.json();
             
             const fromName = data.from.name || '';
             const fromAddr = data.from.address || '';
