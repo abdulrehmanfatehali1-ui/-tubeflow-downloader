@@ -2272,6 +2272,21 @@ async function refreshEmailInbox(silent = false) {
                     return refreshEmailInbox(silent); // Retry fetch
                 }
             }
+            // If account has expired or been deleted on Mail.tm (404/403), remove it and spawn a fresh one
+            if (err.message.includes('404') || err.message.includes('HTTP Error 404') || err.message.includes('403') || err.message.includes('HTTP Error 403')) {
+                console.warn(`Mailbox ${account.email} has expired on Mail.tm. Spawning a fresh address...`);
+                mailAccounts = mailAccounts.filter(acc => acc.email !== account.email);
+                saveMailAccounts();
+                if (mailAccounts.length > 0) {
+                    setActiveEmailAccount(mailAccounts[0].email);
+                } else {
+                    activeMailAddress = '';
+                    const addrEl = document.getElementById('active-email-address-text');
+                    if (addrEl) addrEl.textContent = 'Generating address...';
+                    spawnNewEmailAddress();
+                }
+                return;
+            }
             throw err;
         }
         

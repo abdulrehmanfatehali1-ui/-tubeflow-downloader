@@ -2083,6 +2083,7 @@ def mail_tm_proxy(subpath):
     if 'Authorization' in request.headers:
         headers['Authorization'] = request.headers['Authorization']
     headers['Content-Type'] = 'application/json'
+    headers['Accept'] = 'application/json'
     headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
     
     data = request.get_data()
