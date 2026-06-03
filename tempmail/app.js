@@ -469,6 +469,95 @@ function selectMail(msgId) {
   fetchMessageDetails(msgId);
 }
 
+// Open active decrypted email content in a new browser tab/window (styled in cyberpunk theme)
+function openEmailInNewTab() {
+  if (!state.selectedMessage) {
+    showToast('No email packet selected', 'error');
+    return;
+  }
+  const msg = state.selectedMessage;
+  const textBody = msg.text || '';
+  const htmlBody = (msg.html && msg.html.length > 0) ? msg.html[0] : '';
+  const cleanHtml = htmlBody || textBody.replace(/\n/g, '<br>');
+  const senderStr = msg.from ? (msg.from.name ? `${msg.from.name} <${msg.from.address}>` : msg.from.address) : 'Unknown';
+  
+  const newWindow = window.open();
+  if (newWindow) {
+    newWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>${msg.subject || 'Decrypted Packet'}</title>
+          <style>
+              body {
+                  font-family: monospace;
+                  background-color: #060913;
+                  color: #00ffcc;
+                  padding: 30px 15px;
+                  margin: 0;
+                  line-height: 1.6;
+              }
+              .container {
+                  max-width: 700px;
+                  margin: 0 auto;
+                  border: 1px solid #00ffcc;
+                  box-shadow: 0 0 15px rgba(0, 255, 204, 0.2);
+                  padding: 25px;
+                  background-color: #0a0f1d;
+                  border-radius: 8px;
+              }
+              .header {
+                  border-bottom: 1px dashed #00ffcc;
+                  margin-bottom: 25px;
+                  padding-bottom: 20px;
+              }
+              .title {
+                  font-size: 20px;
+                  font-weight: bold;
+                  color: #ff0055;
+                  margin: 0 0 10px 0;
+                  text-shadow: 0 0 5px rgba(255, 0, 85, 0.5);
+              }
+              .meta {
+                  font-size: 13px;
+                  color: #8899ac;
+                  line-height: 1.8;
+              }
+              .body {
+                  color: #e2e8f0;
+                  background: #0d1527;
+                  padding: 20px;
+                  border: 1px solid #1f2d4d;
+                  border-radius: 4px;
+                  word-break: break-word;
+              }
+              a { color: #00ffcc; }
+          </style>
+      </head>
+      <body>
+          <div class="container">
+              <div class="header">
+                  <div class="title">> ${msg.subject || '(No Subject)'}</div>
+                  <div class="meta">
+                      <strong>SOURCE TRANSMITTER:</strong> ${senderStr}<br>
+                      <strong>TIMESTAMP RECEIPT:</strong> ${msg.date || ''}
+                  </div>
+              </div>
+              <div class="body">
+                  ${cleanHtml}
+              </div>
+          </div>
+      </body>
+      </html>
+    `);
+    newWindow.document.close();
+  } else {
+    showToast('Popup blocker active. Please allow popups.', 'error');
+  }
+}
+
 function switchActiveEmail(address) {
   const targetAcc = state.accounts.find(a => a.address === address);
   if (targetAcc) {

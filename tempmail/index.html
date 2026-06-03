@@ -147,12 +147,15 @@
             </div>
 
             <!-- View Tabs (HTML / Text) -->
-            <div class="viewer-tabs">
+            <div class="viewer-tabs" style="display: flex; align-items: center; justify-content: flex-start; gap: 8px;">
               <button class="tab-btn active" data-tab="rich">
                 <i data-lucide="view"></i> VIEW HTML PACKET
               </button>
               <button class="tab-btn" data-tab="plain">
                 <i data-lucide="binary"></i> DECRYPT PLAIN CODE
+              </button>
+              <button class="tab-btn" onclick="openEmailInNewTab()" style="color: var(--neon-cyan); border: 1px dashed var(--neon-cyan); background: transparent; margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 0.8rem; padding: 6px 12px; font-weight: 500; text-transform: uppercase;">
+                <i data-lucide="external-link"></i> OPEN IN NEW TAB
               </button>
             </div>
 

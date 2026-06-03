@@ -2414,6 +2414,89 @@ function switchMailViewTab(tab) {
     }
 }
 
+// Open active decrypted email content in a new browser tab/window
+function openEmailInNewTab() {
+    if (!currentMailMessage) {
+        showToastNotification('Please select an email message first.');
+        return;
+    }
+    const textBody = currentMailMessage.textBody || '';
+    const htmlBody = currentMailMessage.htmlBody || '';
+    const cleanHtml = htmlBody || textBody.replace(/\n/g, '<br>');
+    
+    const newWindow = window.open();
+    if (newWindow) {
+        newWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>${currentMailMessage.subject || 'Decrypted Email'}</title>
+                <style>
+                    body {
+                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                        font-size: 16px;
+                        color: #1e293b;
+                        line-height: 1.6;
+                        padding: 30px 15px;
+                        margin: 0;
+                        background-color: #f8fafc;
+                    }
+                    .email-container {
+                        max-width: 650px;
+                        margin: 0 auto;
+                        background: #ffffff;
+                        padding: 30px;
+                        border: 1px solid #e2e8f0;
+                        border-radius: 8px;
+                        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+                    }
+                    .email-header {
+                        border-bottom: 1px solid #e2e8f0;
+                        margin-bottom: 25px;
+                        padding-bottom: 20px;
+                    }
+                    .email-subject {
+                        font-size: 20px;
+                        font-weight: 700;
+                        color: #0f172a;
+                        margin: 0 0 10px 0;
+                    }
+                    .email-meta {
+                        font-size: 14px;
+                        color: #64748b;
+                        line-height: 1.8;
+                    }
+                    .email-body {
+                        color: #334155;
+                        word-break: break-word;
+                    }
+                    a { color: #10b981; }
+                </style>
+            </head>
+            <body>
+                <div class="email-container">
+                    <div class="email-header">
+                        <h1 class="email-subject">${currentMailMessage.subject || '(No Subject)'}</h1>
+                        <div class="email-meta">
+                            <strong>From:</strong> ${currentMailMessage.from || 'Unknown'}<br>
+                            <strong>Date:</strong> ${currentMailMessage.date || ''}
+                        </div>
+                    </div>
+                    <div class="email-body">
+                        ${cleanHtml}
+                    </div>
+                </div>
+            </body>
+            </html>
+        `);
+        newWindow.document.close();
+    } else {
+        alert('Please allow popups to open the email in a new tab.');
+    }
+}
+
 // Close message view pane
 function closeMailViewer() {
     currentMailMessage = null;

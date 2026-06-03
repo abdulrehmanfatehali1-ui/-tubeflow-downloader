@@ -474,9 +474,12 @@
                                             </div>
                                         </div>
                                         
-                                        <div class="mail-viewer-tabs">
+                                        <div class="mail-viewer-tabs" style="display: flex; align-items: center; justify-content: flex-start; gap: 8px;">
                                             <button class="mail-tab-btn active" id="mail-view-tab-rich" onclick="switchMailViewTab('rich')">HTML Render</button>
                                             <button class="mail-tab-btn" id="mail-view-tab-plain" onclick="switchMailViewTab('plain')">Plain Decrypt</button>
+                                            <button class="mail-tab-btn" id="mail-view-tab-newtab" onclick="openEmailInNewTab()" style="color: #34d399; border-bottom: none; margin-left: auto; display: flex; align-items: center; gap: 6px; background: transparent; font-size: 0.85rem; padding: 6px 12px; font-weight: 500;">
+                                                <i class="fa-solid fa-up-right-from-square"></i> Open in New Tab
+                                            </button>
                                         </div>
                                         
                                         <div class="mail-viewer-body">
