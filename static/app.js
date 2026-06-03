@@ -1945,14 +1945,36 @@ let activeMailAddress = '';
 let activeMailMessages = [];
 let mailRefreshInterval = null;
 let currentMailMessage = null;
+let mailDomains = []; // Cached available domains from Mail.tm
 
 // Initialize Temp Mail pane
-function initTempMail() {
+async function initTempMail() {
+    await loadMailDomains();
     loadMailAccounts();
     if (mailAccounts.length === 0) {
         spawnNewEmailAddress();
     } else {
         setActiveEmailAccount(activeMailAddress);
+    }
+}
+
+// Fetch available domains from Mail.tm
+async function loadMailDomains() {
+    try {
+        const r = await fetch('https://api.mail.tm/domains');
+        const data = await r.json();
+        const domains = data['hydra:member'] || [];
+        mailDomains = domains.map(d => d.domain);
+        
+        // Overwrite domains in select dropdown list
+        const select = document.getElementById('mail-domain-select');
+        if (select && mailDomains.length > 0) {
+            select.innerHTML = mailDomains.map(d => `<option value="${d}">${d}</option>`).join('');
+        }
+    } catch (e) {
+        console.error('Error loading mail.tm domains:', e);
+        // Fallback domains
+        mailDomains = ['mail.tm', 'secmail.pro'];
     }
 }
 
@@ -1990,17 +2012,16 @@ function randomizeEmailPrefix() {
     if (input) input.value = prefix;
 }
 
-// Spawn / generate a new email address
+// Spawn / register a new Mail.tm account node
 async function spawnNewEmailAddress() {
     const prefixInput = document.getElementById('mail-custom-prefix');
     const domainSelect = document.getElementById('mail-domain-select');
     
-    let email = '';
     let login = '';
     let domain = '';
     
     const customPrefix = prefixInput ? prefixInput.value.trim().toLowerCase() : '';
-    const selectedDomain = domainSelect ? domainSelect.value : '1secmail.com';
+    const selectedDomain = domainSelect ? domainSelect.value : (mailDomains[0] || 'mail.tm');
     
     if (customPrefix) {
         login = customPrefix.replace(/[^a-z0-9_.-]/g, '');
@@ -2008,49 +2029,67 @@ async function spawnNewEmailAddress() {
             alert('Custom prefix must be alphanumeric (letters, numbers, underscores, dots, hyphens)!');
             return;
         }
-        domain = selectedDomain;
-        email = `${login}@${domain}`;
-        addEmailAccountNode(email, login, domain);
-        if (prefixInput) prefixInput.value = '';
     } else {
-        const generateBtn = document.querySelector('.mail-select-row button');
-        if (generateBtn) {
-            generateBtn.disabled = true;
-            generateBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Loading';
+        login = 'temp_' + Math.random().toString(36).substring(2, 10);
+    }
+    
+    domain = selectedDomain;
+    const email = `${login}@${domain}`;
+    const password = Math.random().toString(36).substring(2, 12); // random secret key
+    
+    const generateBtn = document.querySelector('.mail-select-row button');
+    if (generateBtn) {
+        generateBtn.disabled = true;
+        generateBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Spawning';
+    }
+    
+    try {
+        // Step 1: Create Account
+        const r1 = await fetch('https://api.mail.tm/accounts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address: email, password: password })
+        });
+        
+        if (!r1.ok) {
+            const errData = await r1.json();
+            throw new Error(errData.message || 'Registration request rejected');
         }
-        try {
-            const r = await fetch('/api/mail?action=gen');
-            const data = await r.json();
-            if (data && data.length > 0) {
-                const generatedEmail = data[0];
-                const parts = generatedEmail.split('@');
-                login = parts[0];
-                domain = parts[1];
-                addEmailAccountNode(generatedEmail, login, domain);
-            } else {
-                throw new Error('Empty API response');
-            }
-        } catch (e) {
-            console.warn('Error fetching random mail from API, using fallback generator:', e);
-            login = 'temp_' + Math.random().toString(36).substring(2, 9);
-            domain = selectedDomain;
-            email = `${login}@${domain}`;
-            addEmailAccountNode(email, login, domain);
-        } finally {
-            if (generateBtn) {
-                generateBtn.disabled = false;
-                generateBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Generate';
-            }
+        
+        // Step 2: Get JWT auth token
+        const r2 = await fetch('https://api.mail.tm/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address: email, password: password })
+        });
+        
+        if (!r2.ok) {
+            throw new Error('Token acquisition failed');
+        }
+        
+        const tokenData = await r2.json();
+        const token = tokenData.token;
+        const accountId = tokenData.id || '';
+        
+        addEmailAccountNode(email, login, domain, password, token, accountId);
+        if (prefixInput) prefixInput.value = '';
+    } catch (e) {
+        console.error('Error registering account on Mail.tm:', e);
+        alert('Failed to register temporary email: ' + e.message);
+    } finally {
+        if (generateBtn) {
+            generateBtn.disabled = false;
+            generateBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Generate';
         }
     }
 }
 
 // Add account to lists
-function addEmailAccountNode(email, login, domain) {
+function addEmailAccountNode(email, login, domain, password, token, id) {
     if (!mailAccounts.some(acc => acc.email === email)) {
-        mailAccounts.unshift({ email, login, domain });
+        mailAccounts.unshift({ email, login, domain, password, token, id });
         if (mailAccounts.length > 8) {
-            mailAccounts.pop(); // limit nodes size to 8
+            mailAccounts.pop(); // limit size
         }
     }
     
@@ -2142,7 +2181,25 @@ function deleteMailAccount(email) {
     renderMailNodes();
 }
 
-// Force Sync / Fetch incoming stream
+// Refresh token helper if token expires
+async function refreshMailToken(account) {
+    try {
+        const r = await fetch('https://api.mail.tm/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address: account.email, password: account.password })
+        });
+        if (r.ok) {
+            const data = await r.json();
+            return data.token;
+        }
+    } catch (e) {
+        console.error('Failed to refresh token:', e);
+    }
+    return null;
+}
+
+// Force Sync / Fetch incoming stream from Mail.tm
 async function refreshEmailInbox(silent = false) {
     if (!activeMailAddress) return;
     
@@ -2159,21 +2216,51 @@ async function refreshEmailInbox(silent = false) {
     }
     
     try {
-        const r = await fetch(`/api/mail?action=getMessages&login=${encodeURIComponent(account.login)}&domain=${encodeURIComponent(account.domain)}`);
-        const messages = await r.json();
+        const r = await fetch('https://api.mail.tm/messages', {
+            headers: {
+                'Authorization': `Bearer ${account.token}`
+            }
+        });
         
-        if (messages.error) {
-            throw new Error(messages.error);
+        if (!r.ok) {
+            // Try to refresh token
+            const refreshedToken = await refreshMailToken(account);
+            if (refreshedToken) {
+                account.token = refreshedToken;
+                saveMailAccounts();
+                return refreshEmailInbox(silent); // Retry fetch
+            }
+            throw new Error(`HTTP Error ${r.status}`);
         }
         
-        activeMailMessages = messages || [];
+        const data = await r.json();
+        const mailtmMessages = data['hydra:member'] || [];
+        
+        activeMailMessages = mailtmMessages.map(m => {
+            const fromName = m.from.name || '';
+            const fromAddr = m.from.address || '';
+            const fromStr = fromName ? `${fromName} <${fromAddr}>` : fromAddr;
+            
+            const dateObj = new Date(m.createdAt);
+            const dateStr = dateObj.toISOString().replace('T', ' ').substring(0, 19);
+            
+            return {
+                id: m.id,
+                from: fromStr,
+                subject: m.subject,
+                date: dateStr,
+                snippet: m.intro || ''
+            };
+        });
         
         // Merge mock injected emails
         const mockKey = `tubeflow_mock_mails_${activeMailAddress}`;
         const mockMails = JSON.parse(localStorage.getItem(mockKey) || '[]');
         
         let combinedMails = [...mockMails, ...activeMailMessages];
-        combinedMails.sort((a, b) => b.id - a.id); // sort descending
+        
+        // Sort by date descending
+        combinedMails.sort((a, b) => new Date(b.date) - new Date(a.date));
         
         renderMailInboxList(combinedMails);
     } catch (e) {
@@ -2212,7 +2299,7 @@ function renderMailInboxList(messages) {
         const timeOnly = dateStr.includes(' ') ? dateStr.split(' ')[1] : dateStr;
         
         return `
-            <div class="mail-card ${isActive ? 'active' : ''}" id="mail-card-${msg.id}" onclick="selectMailMessage(${msg.id})">
+            <div class="mail-card ${isActive ? 'active' : ''}" id="mail-card-${msg.id}" onclick="selectMailMessage('${msg.id}')">
                 <div class="mail-card-header">
                     <span class="mail-card-sender" title="${escapeHtml(msg.from)}">${escapeHtml(msg.from.split('<')[0] || msg.from)}</span>
                     <span class="mail-card-time">${escapeHtml(timeOnly)}</span>
@@ -2252,7 +2339,7 @@ async function selectMailMessage(id) {
     // Check if mock
     const mockKey = `tubeflow_mock_mails_${activeMailAddress}`;
     const mockMails = JSON.parse(localStorage.getItem(mockKey) || '[]');
-    const mockMsg = mockMails.find(m => m.id === id);
+    const mockMsg = mockMails.find(m => m.id === id || m.id == id);
     
     let msgDetails = null;
     
@@ -2263,12 +2350,30 @@ async function selectMailMessage(id) {
         if (!account) return;
         
         try {
-            const r = await fetch(`/api/mail?action=readMessage&login=${encodeURIComponent(account.login)}&domain=${encodeURIComponent(account.domain)}&id=${id}`);
+            const r = await fetch(`https://api.mail.tm/messages/${id}`, {
+                headers: {
+                    'Authorization': `Bearer ${account.token}`
+                }
+            });
+            if (!r.ok) throw new Error(`HTTP Error ${r.status}`);
+            
             const data = await r.json();
-            if (data.error) {
-                throw new Error(data.error);
-            }
-            msgDetails = data;
+            
+            const fromName = data.from.name || '';
+            const fromAddr = data.from.address || '';
+            const fromStr = fromName ? `${fromName} <${fromAddr}>` : fromAddr;
+            
+            const dateObj = new Date(data.createdAt);
+            const dateStr = dateObj.toISOString().replace('T', ' ').substring(0, 19);
+            
+            msgDetails = {
+                id: data.id,
+                from: fromStr,
+                subject: data.subject,
+                date: dateStr,
+                textBody: data.text || '',
+                htmlBody: data.html && data.html.length > 0 ? data.html[0] : (data.text || '')
+            };
         } catch (e) {
             console.error('Error fetching email body:', e);
             senderNameEl.textContent = 'Error';
@@ -2431,6 +2536,7 @@ function openMockMailerDrawer() {
     }
 }
 
+// Close Simulator Drawer
 function closeMockMailerDrawer() {
     const drawer = document.getElementById('mail-drawer');
     const overlay = document.getElementById('mail-drawer-overlay');
@@ -2510,7 +2616,8 @@ function injectMockMail() {
     }
     
     const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    const id = 990000 + Math.floor(Math.random() * 9999);
+    // Make ID unique and sortable
+    const id = "mock_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
     
     const signature = nameVal ? `${nameVal} <${fromVal}>` : fromVal;
     
