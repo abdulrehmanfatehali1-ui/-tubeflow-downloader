@@ -231,8 +231,10 @@ body {
 
 /* 3. Frosted Glass Platform Selector Tabs */
 .platform-tabs {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE 10+ */
     background: rgba(10, 15, 30, 0.4);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
@@ -241,6 +243,10 @@ body {
     -webkit-backdrop-filter: var(--glass-blur);
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
     gap: 0.5rem;
+}
+
+.platform-tabs::-webkit-scrollbar {
+    display: none; /* Safari and Chrome */
 }
 
 .platform-tab {
@@ -258,6 +264,8 @@ body {
     gap: 0.75rem;
     color: var(--text-muted);
     transition: var(--transition);
+    flex: 1 0 auto;
+    min-width: max-content;
 }
 
 .icon-platform {
