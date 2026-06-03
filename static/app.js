@@ -1630,6 +1630,7 @@ window.addEventListener('appinstalled', (evt) => {
 // Virtual SMS Receiver State Variables
 let smsCountries = [];
 let activeSMSCountry = null;
+let activeSMSCountryFlag = '🌐';
 let activeSMSNumber = null;
 let smsRefreshInterval = null;
 
@@ -1702,6 +1703,7 @@ function filterCountries() {
 // Select country -> Switch view to numbers list
 async function selectSMSCountry(code, name, flag) {
     activeSMSCountry = code;
+    activeSMSCountryFlag = flag || '🌐';
     
     document.getElementById('active-country-flag').textContent = flag || '🌐';
     document.getElementById('active-country-name').textContent = name;
@@ -1740,6 +1742,7 @@ async function selectSMSCountry(code, name, flag) {
         
         container.innerHTML = data.map(n => `
             <div class="sms-number-item ${activeSMSNumber === n.number ? 'active' : ''}" id="sms-num-${n.number}" onclick="selectSMSNumber('${n.number}', '${n.display_number}')">
+                <span class="sms-n-flag">${activeSMSCountryFlag}</span>
                 <span class="sms-n-num">${n.display_number}</span>
                 <span class="sms-n-count">${n.sms_count || '0 messages'}</span>
             </div>
@@ -1987,9 +1990,9 @@ async function initTempMail() {
     }
 }
 
-// Fetch available domains from 1secmail & Maildrop
+// Fetch available domains from Maildrop & 1secmail (maildrop first as 1secmail has 403 issues)
 async function loadMailDomains() {
-    mailDomains = ['1secmail.com', '1secmail.org', '1secmail.net', 'maildrop.cc'];
+    mailDomains = ['maildrop.cc', '1secmail.com', '1secmail.org', '1secmail.net'];
     const select = document.getElementById('mail-domain-select');
     if (select) {
         select.innerHTML = mailDomains.map(d => `<option value="${d}">${d}</option>`).join('');
@@ -2278,6 +2281,7 @@ async function selectMailMessage(id) {
     const selectedCard = document.getElementById(`mail-card-${id}`);
     if (selectedCard) selectedCard.classList.add('active');
     
+    // Show loading state in viewer panel
     document.getElementById('mail-viewer-placeholder').classList.add('hidden');
     document.getElementById('mail-viewer-content').classList.remove('hidden');
     
@@ -2285,15 +2289,11 @@ async function selectMailMessage(id) {
     const senderAddrEl = document.getElementById('mail-msg-sender-address');
     const subjectEl = document.getElementById('mail-msg-subject');
     const timeEl = document.getElementById('mail-msg-time');
-    const textPlainBox = document.getElementById('mail-text-plain-box');
-    const htmlFrame = document.getElementById('mail-html-frame');
     
-    senderNameEl.textContent = 'Decrypting...';
+    senderNameEl.textContent = 'Loading...';
     senderAddrEl.textContent = '';
-    subjectEl.textContent = 'Syncing message packet...';
-    timeEl.textContent = '00:00:00';
-    textPlainBox.textContent = '';
-    if (htmlFrame) htmlFrame.src = 'about:blank';
+    subjectEl.textContent = 'Fetching email...';
+    timeEl.textContent = '';
     
     // Check if mock
     const mockKey = `tubeflow_mock_mails_${activeMailAddress}`;
@@ -2310,30 +2310,23 @@ async function selectMailMessage(id) {
         
         try {
             const r = await fetch(`${API_BASE_URL}/api/mail?action=readMessage&login=${encodeURIComponent(account.login)}&domain=${encodeURIComponent(account.domain)}&id=${encodeURIComponent(id)}`);
-            if (!r.ok) {
-                throw new Error(`HTTP Error ${r.status}`);
-            }
+            if (!r.ok) throw new Error(`HTTP Error ${r.status}`);
             const data = await r.json();
-            if (data.error) {
-                throw new Error(data.error);
-            }
-            
-            const fromStr = data.from || '';
-            const dateStr = data.date || '';
+            if (data.error) throw new Error(data.error);
             
             msgDetails = {
                 id: data.id,
-                from: fromStr,
+                from: data.from || '',
                 subject: data.subject || '',
-                date: dateStr,
+                date: data.date || '',
                 textBody: data.textBody || data.body || '',
                 htmlBody: data.htmlBody || data.body || data.textBody || ''
             };
         } catch (e) {
             console.error('Error fetching email body:', e);
             senderNameEl.textContent = 'Error';
-            subjectEl.textContent = 'Failed to fetch email details';
-            textPlainBox.textContent = e.message;
+            subjectEl.textContent = 'Failed to fetch email';
+            senderAddrEl.textContent = e.message;
             return;
         }
     }
@@ -2353,45 +2346,16 @@ async function selectMailMessage(id) {
     timeEl.textContent = timeOnly;
     
     const avatarEl = document.getElementById('mail-sender-avatar-letter');
-    if (avatarEl) {
-        avatarEl.textContent = (namePart.charAt(0) || 'S').toUpperCase();
-    }
+    if (avatarEl) avatarEl.textContent = (namePart.charAt(0) || 'S').toUpperCase();
     
     const textBody = msgDetails.textBody || '';
     const htmlBody = msgDetails.htmlBody || '';
     
-    textPlainBox.textContent = textBody;
-    
-    if (htmlFrame) {
-        let cleanHtml = htmlBody || textBody.replace(/\n/g, '<br>');
-        htmlFrame.srcdoc = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <style>
-                    body {
-                        font-family: sans-serif;
-                        font-size: 14px;
-                        color: #1e293b;
-                        line-height: 1.5;
-                        padding: 10px;
-                        margin: 0;
-                    }
-                    a { color: #10b981; }
-                </style>
-            </head>
-            <body>${cleanHtml}</body>
-            </html>
-        `;
-    }
-    
-    if (htmlBody) {
-        switchMailViewTab('rich');
-    } else {
-        switchMailViewTab('plain');
-    }
-    
+    // Detect OTP first
     detectAndDisplayOTP(msgDetails.subject + ' ' + textBody + ' ' + htmlBody);
+    
+    // Auto open email body in new tab
+    openEmailInNewTab();
 }
 
 // Switch between Rich HTML render and Plain decrypt text tabs

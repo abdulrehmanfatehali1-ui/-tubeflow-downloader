@@ -395,10 +395,10 @@
                                     </div>
                                     <div class="mail-select-row">
                                         <select id="mail-domain-select">
+                                            <option value="maildrop.cc">maildrop.cc</option>
                                             <option value="1secmail.com">1secmail.com</option>
                                             <option value="1secmail.org">1secmail.org</option>
                                             <option value="1secmail.net">1secmail.net</option>
-                                            <option value="maildrop.cc">maildrop.cc</option>
                                         </select>
                                         <button type="button" class="btn btn-primary btn-sm" onclick="spawnNewEmailAddress()">
                                             <i class="fa-solid fa-plus"></i> Generate
@@ -474,21 +474,14 @@
                                             </div>
                                         </div>
                                         
-                                        <div class="mail-viewer-tabs" style="display: flex; align-items: center; justify-content: flex-start; gap: 8px;">
-                                            <button class="mail-tab-btn active" id="mail-view-tab-rich" onclick="switchMailViewTab('rich')">HTML Render</button>
-                                            <button class="mail-tab-btn" id="mail-view-tab-plain" onclick="switchMailViewTab('plain')">Plain Decrypt</button>
-                                            <button class="mail-tab-btn" id="mail-view-tab-newtab" onclick="openEmailInNewTab()" style="color: #34d399; border-bottom: none; margin-left: auto; display: flex; align-items: center; gap: 6px; background: transparent; font-size: 0.85rem; padding: 6px 12px; font-weight: 500;">
-                                                <i class="fa-solid fa-up-right-from-square"></i> Open in New Tab
-                                            </button>
-                                        </div>
-                                        
-                                        <div class="mail-viewer-body">
-                                            <div class="mail-body-pane active" id="mail-body-pane-rich">
-                                                <iframe id="mail-html-frame" sandbox="allow-same-origin allow-popups" title="HTML MIME Body"></iframe>
+                                        <!-- Open in New Tab action card (no inline viewer) -->
+                                        <div class="mail-open-newtab-card" onclick="openEmailInNewTab()" style="margin-top:1rem; padding: 1rem 1.25rem; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.3); border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: background 0.2s;">
+                                            <i class="fa-solid fa-up-right-from-square" style="color: #10b981; font-size: 1.2rem;"></i>
+                                            <div>
+                                                <div style="font-weight: 600; color: #10b981; font-size: 0.9rem;">Open Full Email</div>
+                                                <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">Click to view in new tab &mdash; full HTML rendering</div>
                                             </div>
-                                            <div class="mail-body-pane" id="mail-body-pane-plain">
-                                                <pre id="mail-text-plain-box"></pre>
-                                            </div>
+                                            <i class="fa-solid fa-chevron-right" style="margin-left: auto; color: #10b981; opacity: 0.7;"></i>
                                         </div>
                                     </div>
                                 </div>
