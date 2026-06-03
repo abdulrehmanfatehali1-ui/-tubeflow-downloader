@@ -1154,6 +1154,16 @@ function displayResults(video) {
     // Setup and load thumbnail with fallback sources
     loadThumbnailWithFallbacks(videoThumbnail, thumbnailPlaceholder, video);
     
+    // Hide/show Download Thumbnail button depending on if thumbnail exists
+    const dlThumbBtn = document.getElementById('download-thumbnail-btn');
+    if (dlThumbBtn) {
+        if (video.thumbnail && video.thumbnail.trim() !== '') {
+            dlThumbBtn.classList.remove('hidden');
+        } else {
+            dlThumbBtn.classList.add('hidden');
+        }
+    }
+    
     // Manage aspect-ratio layout and hide duration badge if duration is unknown (e.g. some live streams/FB reels)
     const durationBadge = document.getElementById('video-duration');
     if (video.duration && video.duration > 0) {
