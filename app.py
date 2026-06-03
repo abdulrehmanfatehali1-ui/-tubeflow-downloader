@@ -1107,6 +1107,7 @@ def manifest():
     return send_from_directory('.', 'manifest.json', mimetype='application/json')
 
 @app.route('/')
+@app.route('/index.html')
 def index():
     return render_template('index.html')
 
