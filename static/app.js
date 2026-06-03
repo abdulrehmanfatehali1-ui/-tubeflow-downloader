@@ -83,6 +83,32 @@ clearBtn.addEventListener('click', () => {
 document.addEventListener('DOMContentLoaded', () => {
     selectPlatform('youtube');
     renderHistory();
+    
+    // Bind thumbnail load & error state listeners
+    const videoThumbnail = document.getElementById('video-thumbnail');
+    const thumbnailPlaceholder = document.getElementById('thumbnail-placeholder');
+    if (videoThumbnail) {
+        videoThumbnail.addEventListener('load', () => {
+            if (thumbnailPlaceholder) thumbnailPlaceholder.style.display = 'none';
+            videoThumbnail.style.display = 'block';
+        });
+        
+        videoThumbnail.addEventListener('error', () => {
+            if (thumbnailPlaceholder) {
+                thumbnailPlaceholder.style.display = 'flex';
+                let iconClass = 'fa-solid fa-play';
+                if (activePlatform === 'youtube') iconClass = 'fa-brands fa-youtube';
+                else if (activePlatform === 'instagram') iconClass = 'fa-brands fa-instagram';
+                else if (activePlatform === 'tiktok') iconClass = 'fa-brands fa-tiktok';
+                else if (activePlatform === 'facebook') iconClass = 'fa-brands fa-facebook';
+                else if (activePlatform === 'universal') iconClass = 'fa-solid fa-globe';
+                
+                thumbnailPlaceholder.className = `thumb-placeholder placeholder-${activePlatform}`;
+                thumbnailPlaceholder.innerHTML = `<i class="${iconClass} placeholder-logo"></i>`;
+            }
+            videoThumbnail.style.display = 'none';
+        });
+    }
 });
 
 // Dynamic Platform Selector
@@ -497,15 +523,11 @@ async function extractYouTubeClientSide(url) {
                     completed++;
                     if (!resolved && completed >= targets.length) {
                         // All Invidious/Piped failed - try Cobalt as last resort
-                        getCobaltMergedLink(url, '720p')
-                            .then(cobaltData => {
+                        fetchClientSideMetadata(url)
+                            .then(meta => {
                                 if (resolved) return;
                                 resolved = true;
-                                let title = cobaltData.filename || 'Extracted Video';
-                                if (title.endsWith('.mp4') || title.endsWith('.webm') || title.endsWith('.mkv')) {
-                                    title = title.substring(0, title.lastIndexOf('.'));
-                                }
-                                resolve(buildCobaltResult(url, title, cobaltData.url));
+                                resolve(buildCobaltResult(url, meta.title, meta.author, meta.thumbnail));
                             })
                             .catch(cobaltErr => {
                                 if (!resolved) reject(new Error("All extraction nodes failed."));
@@ -567,17 +589,14 @@ async function handleFetch(urlToFetch = null) {
     }
 
     // =========================================================
-    // STEP 2: Cobalt bypass (works for ALL platforms)
+        // STEP 2: Cobalt bypass (works for ALL platforms)
+    // =========================================================
     // =========================================================
     if (!data) {
         showStatus('Activating Cobalt bypass extraction engine...', 'loading');
         try {
-            const cobaltData = await getCobaltMergedLink(url, '720p');
-            let title = cobaltData.filename || 'Extracted Video';
-            if (title.endsWith('.mp4') || title.endsWith('.webm') || title.endsWith('.mkv')) {
-                title = title.substring(0, title.lastIndexOf('.'));
-            }
-            data = buildCobaltResult(url, title, cobaltData.url);
+            const meta = await fetchClientSideMetadata(url);
+            data = buildCobaltResult(url, meta.title, meta.author, meta.thumbnail);
         } catch (cobaltErr) {
             console.warn("Cobalt extraction failed, trying server...", cobaltErr);
         }
@@ -616,11 +635,68 @@ async function handleFetch(urlToFetch = null) {
 }
 
 // Helper: Build a standard result object from a Cobalt bypass URL
-function buildCobaltResult(url, title, cobaltUrl) {
+// Fetch metadata using client-side oEmbed APIs and fallbacks
+async function fetchClientSideMetadata(url) {
+    const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
+    const isTikTok = url.includes('tiktok.com');
+    const isPinterest = url.includes('pinterest.com') || url.includes('pin.it');
+
+    let title = 'Extracted Video';
+    let author = 'TubeFlow Bypass Engine';
+    let thumbnail = '';
+
+    try {
+        let oEmbedUrl = '';
+        if (isYouTube) {
+            oEmbedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+        } else if (isTikTok) {
+            oEmbedUrl = `https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`;
+        } else if (isPinterest) {
+            oEmbedUrl = `https://www.pinterest.com/oembed.json?url=${encodeURIComponent(url)}`;
+        }
+
+        if (oEmbedUrl) {
+            const res = await fetch(oEmbedUrl);
+            if (res.ok) {
+                const json = await res.json();
+                title = json.title || title;
+                author = json.author_name || json.provider_name || author;
+                thumbnail = json.thumbnail_url || thumbnail;
+            }
+        }
+    } catch (e) {
+        console.warn("Client-side oEmbed metadata fetch failed:", e);
+    }
+
+    if (title === 'Extracted Video') {
+        try {
+            const urlObj = new URL(url);
+            const pathSegments = urlObj.pathname.split('/');
+            let lastSegment = pathSegments.pop() || pathSegments.pop();
+            if (lastSegment && lastSegment.length > 3) {
+                if (lastSegment.match(/^\d+$/)) {
+                    const prevSegment = pathSegments.pop();
+                    if (prevSegment && prevSegment.length > 3 && !prevSegment.startsWith('@')) {
+                        title = decodeURIComponent(prevSegment).replace(/[-_]/g, ' ');
+                    } else {
+                        title = `${activePlatform.toUpperCase()} Media ${lastSegment}`;
+                    }
+                } else {
+                    title = decodeURIComponent(lastSegment).replace(/[-_]/g, ' ');
+                }
+            }
+        } catch (_) {}
+    }
+
+    return { title, author, thumbnail };
+}
+
+// Helper: Build a standard result object from a Cobalt bypass URL
+function buildCobaltResult(url, title, author, thumbnail) {
     return {
         title: title,
-        author: "TubeFlow Bypass Engine",
-        thumbnail: `https://i.ytimg.com/vi/${getYouTubeId(url) || 'default'}/maxresdefault.jpg`,
+        author: author || "TubeFlow Bypass Engine",
+        thumbnail: thumbnail || '',
         duration: 0,
         duration_formatted: "Direct Stream",
         views: 0,
@@ -628,7 +704,7 @@ function buildCobaltResult(url, title, cobaltUrl) {
         description: "Extracted and bypassed successfully via Cobalt unblocked server pool.",
         video_formats: [
             {
-                format_id: btoa(unescape(encodeURIComponent(`${cobaltUrl}|${title}|mp4`))),
+                format_id: btoa(`cobalt|1080p`),
                 ext: 'mp4',
                 resolution: '1080p',
                 quality_label: '1080p',
@@ -637,20 +713,38 @@ function buildCobaltResult(url, title, cobaltUrl) {
                 note: '🔥 Full HD 1080p (Cobalt Bypass)'
             },
             {
-                format_id: btoa(unescape(encodeURIComponent(`${cobaltUrl}|${title}|mp4`))),
+                format_id: btoa(`cobalt|720p`),
                 ext: 'mp4',
                 resolution: '720p',
                 quality_label: '720p',
                 filesize: 0,
                 type: 'combined',
                 note: '⚡ HD 720p (Cobalt Bypass)'
+            },
+            {
+                format_id: btoa(`cobalt|480p`),
+                ext: 'mp4',
+                resolution: '480p',
+                quality_label: '480p',
+                filesize: 0,
+                type: 'combined',
+                note: '📱 SD 480p (Cobalt Bypass)'
+            },
+            {
+                format_id: btoa(`cobalt|360p`),
+                ext: 'mp4',
+                resolution: '360p',
+                quality_label: '360p',
+                filesize: 0,
+                type: 'combined',
+                note: '📉 Low SD 360p (Cobalt Bypass)'
             }
         ],
         audio_formats: [
             {
-                format_id: btoa(unescape(encodeURIComponent(`${cobaltUrl}|${title}|mp3`))),
+                format_id: btoa(`cobalt|audio`),
                 ext: 'mp3',
-                quality_label: '320kbps',
+                quality_label: 'Audio',
                 filesize: 0,
                 type: 'audio',
                 note: '🎵 High-Quality MP3 (Cobalt Bypass)'
@@ -697,6 +791,16 @@ function showStatus(message, type) {
 
 // Render Results to DOM
 function displayResults(video) {
+    // Reset thumbnail loading/placeholder state
+    const videoThumbnail = document.getElementById('video-thumbnail');
+    const thumbnailPlaceholder = document.getElementById('thumbnail-placeholder');
+    if (thumbnailPlaceholder) {
+        thumbnailPlaceholder.style.display = 'flex';
+        thumbnailPlaceholder.className = 'thumb-placeholder';
+        thumbnailPlaceholder.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+    }
+    if (videoThumbnail) videoThumbnail.style.display = 'none';
+
     // Fill basic metadata
     document.getElementById('video-thumbnail').src = video.thumbnail || 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=640';
     

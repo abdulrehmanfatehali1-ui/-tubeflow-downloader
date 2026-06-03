@@ -1125,7 +1125,7 @@ body {
 /* Overwrite App Container Max-Width for SaaS Grid */
 .app-container {
     max-width: 1200px;
-    padding: 2rem 1.5rem;
+    padding: 7.5rem 1.5rem 2rem 1.5rem;
     gap: 1.5rem;
 }
 
@@ -1137,15 +1137,19 @@ body {
     text-align: left;
     margin-bottom: 0;
     padding: 1rem 1.5rem;
-    background: rgba(10, 15, 30, 0.65);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(6, 8, 19, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: var(--radius-md);
     backdrop-filter: var(--glass-blur);
     -webkit-backdrop-filter: var(--glass-blur);
     box-shadow: var(--card-shadow);
-    position: sticky;
+    position: fixed;
     top: 1rem;
-    z-index: 100;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 3rem);
+    max-width: 1200px;
+    z-index: 1000;
 }
 
 .logo-area {
@@ -1418,17 +1422,24 @@ body {
         gap: 1rem;
         align-items: center;
         text-align: center;
+        position: fixed;
+        top: 1rem;
+        width: calc(100% - 2rem);
     }
     
     .header-actions {
         width: 100%;
         justify-content: space-between;
     }
+
+    .app-container {
+        padding-top: 11.5rem;
+    }
 }
 
 @media (max-width: 620px) {
     .app-container {
-        padding: 1.5rem 0.8rem;
+        padding: 11.5rem 0.8rem 1.5rem 0.8rem;
     }
     
     .app-header {
@@ -1438,4 +1449,58 @@ body {
     #logo-text {
         font-size: 1.8rem;
     }
+}
+
+/* Thumbnail Placeholders & Glowing Gradient Fallbacks */
+.thumb-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: var(--radius-md);
+    transition: var(--transition);
+}
+
+.placeholder-logo {
+    font-size: 4.5rem;
+    filter: drop-shadow(0 0 15px currentColor);
+    opacity: 0.85;
+    animation: pulseLogo 3s infinite alternate ease-in-out;
+}
+
+@keyframes pulseLogo {
+    0% { transform: scale(1); opacity: 0.7; }
+    100% { transform: scale(1.08); opacity: 0.95; }
+}
+
+.placeholder-youtube {
+    background: radial-gradient(circle at center, rgba(255, 0, 0, 0.25) 0%, rgba(6, 8, 19, 0.9) 100%);
+    color: #ff0000;
+    border: 1px solid rgba(255, 0, 0, 0.15);
+}
+
+.placeholder-instagram {
+    background: radial-gradient(circle at center, rgba(214, 41, 118, 0.25) 0%, rgba(6, 8, 19, 0.9) 100%);
+    color: #e1306c;
+    border: 1px solid rgba(214, 41, 118, 0.15);
+}
+
+.placeholder-tiktok {
+    background: radial-gradient(circle at center, rgba(0, 242, 254, 0.15) 0%, rgba(254, 44, 85, 0.15) 50%, rgba(6, 8, 19, 0.9) 100%);
+    color: #00f2fe;
+    border: 1px solid rgba(0, 242, 254, 0.15);
+}
+
+.placeholder-facebook {
+    background: radial-gradient(circle at center, rgba(24, 119, 242, 0.25) 0%, rgba(6, 8, 19, 0.9) 100%);
+    color: #1877f2;
+    border: 1px solid rgba(24, 119, 242, 0.15);
+}
+
+.placeholder-universal {
+    background: radial-gradient(circle at center, rgba(247, 37, 133, 0.2) 0%, rgba(114, 9, 183, 0.2) 100%);
+    color: #f72585;
+    border: 1px solid rgba(247, 37, 133, 0.15);
 }
