@@ -997,12 +997,25 @@ function displayResults(video) {
 
 // Helper to format file sizes
 function formatBytes(bytes, decimals = 2) {
-    if (!bytes || bytes === 0) return 'Unknown Size';
+    if (!bytes || bytes === 0) return 'Streaming';
     const k = 1024;
     const dm = decimals < 0 ? 0 : decimals;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
+// Estimate file size for Cobalt bypass formats (no real size known)
+function estimateCobaltSize(qualityLabel, isAudio) {
+    if (isAudio) return '~4-8 MB';
+    const q = (qualityLabel || '').toLowerCase();
+    if (q.includes('2160') || q.includes('4k')) return '~800 MB-2 GB';
+    if (q.includes('1440') || q.includes('2k')) return '~400-800 MB';
+    if (q.includes('1080')) return '~100-400 MB';
+    if (q.includes('720')) return '~50-150 MB';
+    if (q.includes('480')) return '~20-80 MB';
+    if (q.includes('360')) return '~10-50 MB';
+    return 'Streaming';
 }
 
 // Populate formats lists
@@ -1314,49 +1327,32 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
         if (res && res.url) {
             directStreamUrl = res.url;
             progressStatus.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin font-accent"></i> Directing download stream...`;
+            progressFill.style.width = '60%';
+            progressPercent.textContent = '60%';
             
+            // Direct anchor click - bypasses CORS restriction entirely
             try {
-                // Await browser download. If fetch fails (CORS block on direct stream URL), it throws error.
-                await triggerBrowserDownload(res.url, downloadFilename);
+                const link = document.createElement('a');
+                link.href = res.url;
+                link.download = downloadFilename;
+                link.target = '_blank';
+                link.rel = 'noopener';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
                 
                 progressFill.style.width = '100%';
                 progressFill.classList.remove('pulsing-fill');
                 progressPercent.textContent = '100%';
                 progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Bypass successful! Download started.</span>`;
                 showStatus('Download started successfully!', 'success');
+                
+                // Also show manual save button in case browser blocks auto-download
+                showDownloadSaveButton(res.url, downloadFilename, true);
                 toggleDownloadButtons(true);
                 return;
             } catch (dlErr) {
-                console.warn("Direct browser download failed, checking server availability...", dlErr);
-                if (isServerSupported()) {
-                    // Fall back to server-side proxy download which bypasses CORS and forces attachment downloads!
-                    throw dlErr;
-                } else {
-                    // Static host: No server backend is available! We must use hidden iframe, and if that fails, open in new tab!
-                    progressStatus.innerHTML = `<i class="fa-solid fa-cloud-arrow-down"></i> Redirecting download stream...`;
-                    
-                    // Show direct link fallback in the button
-                    showDownloadSaveButton(res.url, downloadFilename, true);
-                    
-                    try {
-                        let iframe = document.getElementById('download-iframe');
-                        if (!iframe) {
-                            iframe = document.createElement('iframe');
-                            iframe.id = 'download-iframe';
-                            iframe.style.display = 'none';
-                            document.body.appendChild(iframe);
-                        }
-                        iframe.src = res.url;
-                    } catch (iframeErr) {
-                        window.open(res.url, '_blank');
-                    }
-                    progressFill.style.width = '100%';
-                    progressFill.classList.remove('pulsing-fill');
-                    progressPercent.textContent = '100%';
-                    progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Direct download triggered!</span>`;
-                    toggleDownloadButtons(true);
-                    return;
-                }
+                console.warn('Direct anchor click failed:', dlErr);
             }
         }
     } catch (err) {
@@ -1419,7 +1415,17 @@ function startServerSideDownload(formatId, ext, qualityLabel, formatTypeOrIsMerg
             if (data.error) throw new Error(data.error);
             const taskId = data.task_id;
             
-            activeDownloadInterval = setInterval(() => {
+            let pollCount = 0;
+    const MAX_POLLS = 120; // 2 minutes max
+    
+    activeDownloadInterval = setInterval(() => {
+        pollCount++;
+        if (pollCount >= MAX_POLLS) {
+            clearInterval(activeDownloadInterval);
+            activeDownloadInterval = null;
+            handleDownloadFailure('Download timed out after 2 minutes. Please try again.');
+            return;
+        }
                 fetch(`${API_BASE_URL}/api/download/progress?task_id=${taskId}`)
                     .then(res => {
                         if (!res.ok) throw new Error("Progress connection lost");
