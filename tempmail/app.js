@@ -8,7 +8,7 @@ const state = {
   activeAccount: null, // Current active account object
   messages: [],        // Messages list for the active account
   selectedMessage: null,
-  domains: ['1secmail.com', '1secmail.org', '1secmail.net'],
+  domains: ['1secmail.com', '1secmail.org', '1secmail.net', 'maildrop.cc'],
   pollingInterval: null,
   isPolling: false
 };

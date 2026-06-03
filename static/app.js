@@ -1987,54 +1987,12 @@ async function initTempMail() {
     }
 }
 
-// Helper client wrapper for Mail.tm via backend proxy route to bypass firewall blocks
-async function fetchMailTM(endpoint, options = {}) {
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/mail/tm/${endpoint}`, options);
-        if (!response.ok) {
-            let errorMsg = `HTTP Error ${response.status}`;
-            try {
-                const contentType = response.headers.get('content-type') || '';
-                if (contentType.includes('application/json')) {
-                    const errData = await response.json();
-                    errorMsg = errData.error || errData.message || errorMsg;
-                }
-            } catch (jsonErr) {}
-            throw new Error(errorMsg);
-        }
-        
-        if (response.status === 204) {
-            return null;
-        }
-        
-        const contentType = response.headers.get('content-type') || '';
-        if (!contentType.includes('application/json') && !contentType.includes('application/ld+json')) {
-            throw new Error('Server returned invalid content format');
-        }
-        
-        return await response.json();
-    } catch (err) {
-        console.error(`Mail.tm proxy error on endpoint [${endpoint}]:`, err);
-        throw err;
-    }
-}
-
-// Fetch available domains from Mail.tm
+// Fetch available domains from 1secmail & Maildrop
 async function loadMailDomains() {
-    try {
-        const data = await fetchMailTM('domains');
-        const domains = data['hydra:member'] || [];
-        mailDomains = domains.map(d => d.domain);
-        
-        // Overwrite domains in select dropdown list
-        const select = document.getElementById('mail-domain-select');
-        if (select && mailDomains.length > 0) {
-            select.innerHTML = mailDomains.map(d => `<option value="${d}">${d}</option>`).join('');
-        }
-    } catch (e) {
-        console.error('Error loading mail.tm domains:', e);
-        // Fallback domains
-        mailDomains = ['wshu.net'];
+    mailDomains = ['1secmail.com', '1secmail.org', '1secmail.net', 'maildrop.cc'];
+    const select = document.getElementById('mail-domain-select');
+    if (select) {
+        select.innerHTML = mailDomains.map(d => `<option value="${d}">${d}</option>`).join('');
     }
 }
 
@@ -2052,8 +2010,8 @@ function loadMailAccounts() {
             mailAccounts = JSON.parse(stored);
         }
         
-        // Filter out legacy 1secmail accounts
-        mailAccounts = mailAccounts.filter(acc => acc.email && !acc.email.includes('1secmail'));
+        // Filter out legacy Mail.tm accounts (containing @wshu.net or having password/token/id fields)
+        mailAccounts = mailAccounts.filter(acc => acc.email && !acc.email.includes('wshu.net') && !acc.token);
         
         if (active && mailAccounts.some(acc => acc.email === active)) {
             activeMailAddress = active;
@@ -2076,17 +2034,15 @@ function randomizeEmailPrefix() {
     if (input) input.value = prefix;
 }
 
-// Spawn / register a new Mail.tm account node
+// Spawn / register a new 1secmail account node (stateless, instant generation)
 async function spawnNewEmailAddress() {
     const prefixInput = document.getElementById('mail-custom-prefix');
     const domainSelect = document.getElementById('mail-domain-select');
     
     let login = '';
-    let domain = '';
+    const selectedDomain = domainSelect ? domainSelect.value : (mailDomains[0] || '1secmail.com');
     
     const customPrefix = prefixInput ? prefixInput.value.trim().toLowerCase() : '';
-    const selectedDomain = domainSelect ? domainSelect.value : (mailDomains[0] || 'mail.tm');
-    
     if (customPrefix) {
         login = customPrefix.replace(/[^a-z0-9_.-]/g, '');
         if (!login) {
@@ -2097,9 +2053,7 @@ async function spawnNewEmailAddress() {
         login = 'temp_' + Math.random().toString(36).substring(2, 10);
     }
     
-    domain = selectedDomain;
-    const email = `${login}@${domain}`;
-    const password = Math.random().toString(36).substring(2, 12); // random secret key
+    const email = `${login}@${selectedDomain}`;
     
     const generateBtn = document.querySelector('.mail-select-row button');
     if (generateBtn) {
@@ -2108,28 +2062,11 @@ async function spawnNewEmailAddress() {
     }
     
     try {
-        // Step 1: Create Account
-        const r1Data = await fetchMailTM('accounts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ address: email, password: password })
-        });
-        
-        // Step 2: Get JWT auth token
-        const tokenData = await fetchMailTM('token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ address: email, password: password })
-        });
-        
-        const token = tokenData.token;
-        const accountId = tokenData.id || '';
-        
-        addEmailAccountNode(email, login, domain, password, token, accountId);
+        addEmailAccountNode(email, login, selectedDomain);
         if (prefixInput) prefixInput.value = '';
     } catch (e) {
-        console.error('Error registering account on Mail.tm:', e);
-        alert('Failed to register temporary email: ' + e.message);
+        console.error('Error spawning account:', e);
+        alert('Failed to spawn temporary email: ' + e.message);
     } finally {
         if (generateBtn) {
             generateBtn.disabled = false;
@@ -2139,9 +2076,9 @@ async function spawnNewEmailAddress() {
 }
 
 // Add account to lists
-function addEmailAccountNode(email, login, domain, password, token, id) {
+function addEmailAccountNode(email, login, domain) {
     if (!mailAccounts.some(acc => acc.email === email)) {
-        mailAccounts.unshift({ email, login, domain, password, token, id });
+        mailAccounts.unshift({ email, login, domain });
         if (mailAccounts.length > 8) {
             mailAccounts.pop(); // limit size
         }
@@ -2235,22 +2172,7 @@ function deleteMailAccount(email) {
     renderMailNodes();
 }
 
-// Refresh token helper if token expires
-async function refreshMailToken(account) {
-    try {
-        const data = await fetchMailTM('token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ address: account.email, password: account.password })
-        });
-        return data.token;
-    } catch (e) {
-        console.error('Failed to refresh token:', e);
-    }
-    return null;
-}
-
-// Force Sync / Fetch incoming stream from Mail.tm
+// Force Sync / Fetch incoming stream from 1secmail
 async function refreshEmailInbox(silent = false) {
     if (!activeMailAddress) return;
     
@@ -2267,62 +2189,22 @@ async function refreshEmailInbox(silent = false) {
     }
     
     try {
-        let data;
-        try {
-            data = await fetchMailTM('messages', {
-                headers: {
-                    'Authorization': `Bearer ${account.token}`
-                }
-            });
-        } catch (err) {
-            // Try to refresh token if unauthorized
-            if (err.message.includes('401') || err.message.includes('Unauthorized') || err.message.includes('HTTP Error 401')) {
-                const refreshedToken = await refreshMailToken(account);
-                if (refreshedToken) {
-                    account.token = refreshedToken;
-                    saveMailAccounts();
-                    return refreshEmailInbox(silent); // Retry fetch
-                }
-            }
-            // If account has expired, been deleted, or has invalid credentials/token (404/403 or JWT/Token/1secmail errors), remove it and spawn a fresh one
-            if (
-                err.message.includes('404') || err.message.includes('HTTP Error 404') || 
-                err.message.includes('403') || err.message.includes('HTTP Error 403') ||
-                err.message.includes('JWT') || err.message.includes('Token') || err.message.includes('Credentials') ||
-                account.email.includes('1secmail')
-            ) {
-                console.warn(`Mailbox ${account.email} has expired/invalid token on Mail.tm. Spawning a fresh address...`);
-                mailAccounts = mailAccounts.filter(acc => acc.email !== account.email);
-                saveMailAccounts();
-                if (mailAccounts.length > 0) {
-                    setActiveEmailAccount(mailAccounts[0].email);
-                } else {
-                    activeMailAddress = '';
-                    const addrEl = document.getElementById('active-email-address-text');
-                    if (addrEl) addrEl.textContent = 'Generating address...';
-                    spawnNewEmailAddress();
-                }
-                return;
-            }
-            throw err;
+        const r = await fetch(`${API_BASE_URL}/api/mail?action=getMessages&login=${encodeURIComponent(account.login)}&domain=${encodeURIComponent(account.domain)}`);
+        if (!r.ok) {
+            throw new Error(`HTTP Error ${r.status}`);
+        }
+        const messages = await r.json();
+        if (messages.error) {
+            throw new Error(messages.error);
         }
         
-        const mailtmMessages = data['hydra:member'] || [];
-        
-        activeMailMessages = mailtmMessages.map(m => {
-            const fromName = m.from.name || '';
-            const fromAddr = m.from.address || '';
-            const fromStr = fromName ? `${fromName} <${fromAddr}>` : fromAddr;
-            
-            const dateObj = new Date(m.createdAt);
-            const dateStr = dateObj.toISOString().replace('T', ' ').substring(0, 19);
-            
+        activeMailMessages = (messages || []).map(m => {
             return {
                 id: m.id,
-                from: fromStr,
+                from: m.from,
                 subject: m.subject,
-                date: dateStr,
-                snippet: m.intro || ''
+                date: m.date,
+                snippet: ''
             };
         });
         
@@ -2332,8 +2214,12 @@ async function refreshEmailInbox(silent = false) {
         
         let combinedMails = [...mockMails, ...activeMailMessages];
         
-        // Sort by date descending
-        combinedMails.sort((a, b) => new Date(b.date) - new Date(a.date));
+        // Sort by ID descending
+        combinedMails.sort((a, b) => {
+            const aId = String(a.id).startsWith('mock_') ? parseInt(String(a.id).split('_')[1], 10) : parseInt(a.id, 10);
+            const bId = String(b.id).startsWith('mock_') ? parseInt(String(b.id).split('_')[1], 10) : parseInt(b.id, 10);
+            return bId - aId;
+        });
         
         renderMailInboxList(combinedMails);
     } catch (e) {
@@ -2423,31 +2309,30 @@ async function selectMailMessage(id) {
         if (!account) return;
         
         try {
-            const data = await fetchMailTM(`messages/${id}`, {
-                headers: {
-                    'Authorization': `Bearer ${account.token}`
-                }
-            });
+            const r = await fetch(`${API_BASE_URL}/api/mail?action=readMessage&login=${encodeURIComponent(account.login)}&domain=${encodeURIComponent(account.domain)}&id=${encodeURIComponent(id)}`);
+            if (!r.ok) {
+                throw new Error(`HTTP Error ${r.status}`);
+            }
+            const data = await r.json();
+            if (data.error) {
+                throw new Error(data.error);
+            }
             
-            const fromName = data.from.name || '';
-            const fromAddr = data.from.address || '';
-            const fromStr = fromName ? `${fromName} <${fromAddr}>` : fromAddr;
-            
-            const dateObj = new Date(data.createdAt);
-            const dateStr = dateObj.toISOString().replace('T', ' ').substring(0, 19);
+            const fromStr = data.from || '';
+            const dateStr = data.date || '';
             
             msgDetails = {
                 id: data.id,
                 from: fromStr,
-                subject: data.subject,
+                subject: data.subject || '',
                 date: dateStr,
-                textBody: data.text || '',
-                htmlBody: data.html && data.html.length > 0 ? data.html[0] : (data.text || '')
+                textBody: data.textBody || data.body || '',
+                htmlBody: data.htmlBody || data.body || data.textBody || ''
             };
         } catch (e) {
             console.error('Error fetching email body:', e);
             senderNameEl.textContent = 'Error';
-            subjectEl.textContent = 'Failed to decrypt email packet';
+            subjectEl.textContent = 'Failed to fetch email details';
             textPlainBox.textContent = e.message;
             return;
         }

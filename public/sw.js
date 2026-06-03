@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tubeflow-cache-v13';
+const CACHE_NAME = 'tubeflow-cache-v14';
 const ASSETS = [
   './',
   './index.html',

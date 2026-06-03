@@ -2035,13 +2035,121 @@ def get_sms_inbox():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# Stateless 1secmail proxy route for Temp Mail
+# Stateless proxy route for Temp Mail (1secmail & Maildrop.cc hybrid)
 @app.route('/api/mail')
 def api_mail_proxy():
     action = request.args.get('action')
     if not action:
         return jsonify({'error': 'Action is required'}), 400
         
+    domain = request.args.get('domain', '')
+    
+    # Route to Maildrop.cc if domain is maildrop.cc
+    if domain.lower() == 'maildrop.cc':
+        graphql_url = 'https://api.maildrop.cc/graphql'
+        headers = {
+            'content-type': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+        }
+        
+        if action == 'gen':
+            import random
+            import string
+            fake_emails = []
+            for _ in range(5):
+                prefix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+                fake_emails.append(f"{prefix}@maildrop.cc")
+            return jsonify(fake_emails)
+            
+        elif action == 'getMessages':
+            login = request.args.get('login')
+            if not login:
+                return jsonify({'error': 'Missing login parameter'}), 400
+            
+            query = """
+            query {
+              inbox(mailbox: "%s") {
+                id
+                mailfrom
+                subject
+                date
+              }
+            }
+            """ % login.replace('"', '\\"')
+            
+            try:
+                if curl_requests:
+                    r = curl_requests.post(graphql_url, json={"query": query}, headers=headers, impersonate="chrome", timeout=12)
+                else:
+                    r = requests.post(graphql_url, json={"query": query}, headers=headers, timeout=12)
+                r.raise_for_status()
+                data = r.json()
+                inbox = data.get('data', {}).get('inbox', []) or []
+                mapped = []
+                for msg in inbox:
+                    dt_str = msg.get('date', '')
+                    if 'T' in dt_str:
+                        dt_str = dt_str.replace('T', ' ').split('.')[0]
+                    mapped.append({
+                        "id": msg.get('id'),
+                        "from": msg.get('mailfrom'),
+                        "subject": msg.get('subject'),
+                        "date": dt_str
+                    })
+                return jsonify(mapped)
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+                
+        elif action == 'readMessage':
+            login = request.args.get('login')
+            msg_id = request.args.get('id')
+            if not login or not msg_id:
+                return jsonify({'error': 'Missing login or id parameters'}), 400
+                
+            query = """
+            query {
+              message(mailbox: "%s", id: "%s") {
+                id
+                headerfrom
+                subject
+                date
+                html
+              }
+            }
+            """ % (login.replace('"', '\\"'), msg_id.replace('"', '\\"'))
+            
+            try:
+                if curl_requests:
+                    r = curl_requests.post(graphql_url, json={"query": query}, headers=headers, impersonate="chrome", timeout=12)
+                else:
+                    r = requests.post(graphql_url, json={"query": query}, headers=headers, timeout=12)
+                r.raise_for_status()
+                data = r.json()
+                maildrop_msg = data.get('data', {}).get('message', {})
+                if not maildrop_msg:
+                    return jsonify({'error': 'Message not found'}), 404
+                    
+                dt_str = maildrop_msg.get('date', '')
+                if 'T' in dt_str:
+                    dt_str = dt_str.replace('T', ' ').split('.')[0]
+                
+                html_content = maildrop_msg.get('html', '')
+                mapped_msg = {
+                    "id": maildrop_msg.get('id'),
+                    "from": maildrop_msg.get('headerfrom'),
+                    "subject": maildrop_msg.get('subject'),
+                    "date": dt_str,
+                    "body": html_content,
+                    "textBody": html_content,
+                    "htmlBody": html_content
+                }
+                return jsonify(mapped_msg)
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
+        else:
+            return jsonify({'error': 'Invalid action'}), 400
+            
+    # Default to 1secmail
     target_url = 'https://www.1secmail.com/api/v1/'
     
     if action == 'gen':
@@ -2064,9 +2172,13 @@ def api_mail_proxy():
         
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
         }
-        r = requests.get(target_url, headers=headers, timeout=10)
+        if curl_requests:
+            r = curl_requests.get(target_url, headers=headers, impersonate="chrome", timeout=12)
+        else:
+            r = requests.get(target_url, headers=headers, timeout=12)
+            
         r.raise_for_status()
         return jsonify(r.json())
     except Exception as e:
