@@ -835,77 +835,73 @@ function toggleDownloadButtons(enabled) {
 // Client-Side high-resolution video + audio merger using public Cobalt APIs
 async function getCobaltMergedLink(videoUrl, qualityLabel, isAudio = false) {
     const instances = [
-        'https://co.wuk.sh',
-        'https://api.cobalt.tools',
-        'https://cobalt.api.ryz.cx',
-        'https://cobalt.best',
-        'https://cobalt.moe',
-        'https://co.eepy.today',
-        'https://api.kuko.rip'
+        'https://apicobalt.mgytr.top',
+        'https://cobaltapi.kittycat.boo',
+        'https://dog.kittycat.boo',
+        'https://fox.kittycat.boo',
+        'https://api.cobalt.liubquanti.click',
+        'https://api.cobalt.blackcat.sweeux.org',
+        'https://cobaltapi.cjs.nz'
     ];
     
-    let q = '720';
+    let q = '1080';
     const qLower = (qualityLabel || '').toLowerCase();
-    if (qLower.includes('2160') || qLower.includes('4k')) q = '2160';
+    if (qLower.includes('2160') || qLower.includes('4k')) q = 'max';
     else if (qLower.includes('1440') || qLower.includes('2k')) q = '1440';
     else if (qLower.includes('1080')) q = '1080';
     else if (qLower.includes('720')) q = '720';
     else if (qLower.includes('480')) q = '480';
     else if (qLower.includes('360')) q = '360';
     
-    // We try 3 levels of payloads to bypass strict JSON schema validators (v7 vs v6 vs minimal)!
-    const payloads = [
-        // Level 1: Strict Cobalt v7 payload (clean)
-        {
-            url: videoUrl,
-            isAudioOnly: isAudio,
-            videoQuality: q,
-            audioFormat: isAudio ? 'mp3' : undefined
-        },
-        // Level 2: Strict Cobalt v6 payload (clean)
-        {
-            url: videoUrl,
-            isAudioOnly: isAudio,
-            vQuality: q
-        },
-        // Level 3: Minimal universal payload (100% accepted by all versions)
-        {
-            url: videoUrl
-        }
-    ];
+    // Modern Cobalt v10/v11 API schema parameters
+    const payload = {
+        url: videoUrl,
+        videoQuality: q,
+        downloadMode: isAudio ? 'audio' : 'auto',
+        audioFormat: isAudio ? 'mp3' : 'best',
+        audioBitrate: '128',
+        filenameStyle: 'basic'
+    };
+    
+    const headers = {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+    };
     
     for (let instance of instances) {
-        for (let path of ["/api/json", ""]) {
-            for (let payload of payloads) {
-                // Filter undefined values
-                const cleanPayload = {};
-                for (let [k, v] of Object.entries(payload)) {
-                    if (v !== undefined) cleanPayload[k] = v;
-                }
+        // Try v11 POST / first, fall back to POST /api/json for older instances
+        for (let path of ["/", "/api/json"]) {
+            try {
+                const targetUrl = `${instance.replace(/\/$/, '')}${path}`;
+                const response = await fetch(targetUrl, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(payload)
+                });
                 
-                try {
-                    const response = await fetch(`${instance}${path}`, {
-                        method: 'POST',
-                        headers: {
-                            'Accept': 'application/json',
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(cleanPayload)
-                    });
-                    if (response.ok) {
-                        const json = await response.json();
-                        if (json && json.url && ['stream', 'redirect', 'tunnel'].includes(json.status)) {
+                if (response.ok) {
+                    const json = await response.json();
+                    if (json) {
+                        // Standard tunnel/stream URL
+                        if (json.url || json.tunnel) {
                             return {
-                                url: json.url,
-                                filename: json.filename || 'Extracted Video'
+                                url: json.url || json.tunnel,
+                                filename: json.filename || 'download'
+                            };
+                        }
+                        // Picker (splits video and audio for high quality) - take first
+                        if (json.status === 'picker' && json.picker && json.picker.length > 0) {
+                            return {
+                                url: json.picker[0].url || json.picker[0].tunnel,
+                                filename: json.filename || 'download'
                             };
                         }
                     }
-                } catch (_) {}
-            }
+                }
+            } catch (_) {}
         }
     }
-    throw new Error("SaaS merge servers are currently busy. Please try a standard 'Direct' resolution.");
+    throw new Error("Bypass servers are currently rate-limited. Please select a standard format.");
 }
 
 // Trigger Asynchronous progress-monitored download (100% Client-Side Cobalt bypass first, Server-Side fallback)
