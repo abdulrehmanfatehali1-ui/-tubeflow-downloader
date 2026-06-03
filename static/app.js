@@ -1196,3 +1196,41 @@ function renderHistory() {
         historyContainer.appendChild(card);
     });
 }
+
+// PWA Installation & Service Worker registration
+let deferredPrompt;
+const installBtn = document.getElementById('install-app-btn');
+
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('TubeFlow SW: Registered successfully with scope:', reg.scope))
+            .catch(err => console.error('TubeFlow SW: Registration failed:', err));
+    });
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    if (installBtn) {
+        installBtn.classList.remove('hidden');
+    }
+});
+
+if (installBtn) {
+    installBtn.addEventListener('click', async () => {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`TubeFlow PWA: User choice outcome: ${outcome}`);
+        deferredPrompt = null;
+        installBtn.classList.add('hidden');
+    });
+}
+
+window.addEventListener('appinstalled', (evt) => {
+    console.log('TubeFlow PWA: Application installed successfully');
+    if (installBtn) {
+        installBtn.classList.add('hidden');
+    }
+});

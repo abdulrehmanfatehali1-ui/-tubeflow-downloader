@@ -1040,6 +1040,16 @@ def cobalt_stream():
     response.headers['X-Accel-Buffering'] = 'no'
     return response
 
+@app.route('/sw.js')
+def service_worker():
+    from flask import send_from_directory
+    return send_from_directory('.', 'sw.js', mimetype='application/javascript')
+
+@app.route('/manifest.json')
+def manifest():
+    from flask import send_from_directory
+    return send_from_directory('.', 'manifest.json', mimetype='application/json')
+
 @app.route('/')
 def index():
     return render_template('index.html')

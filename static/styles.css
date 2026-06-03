@@ -1117,3 +1117,322 @@ body {
         max-height: 230px;
     }
 }
+
+/* ==========================================================================
+   6. PREMIUM SAAS DASHBOARD OVERRIDES
+   ========================================================================== */
+
+/* Overwrite App Container Max-Width for SaaS Grid */
+.app-container {
+    max-width: 1200px;
+    padding: 2rem 1.5rem;
+    gap: 1.5rem;
+}
+
+/* Premium Navigation Bar Header */
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    text-align: left;
+    margin-bottom: 0;
+    padding: 1rem 1.5rem;
+    background: rgba(10, 15, 30, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius-md);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    box-shadow: var(--card-shadow);
+}
+
+.logo-area {
+    margin-bottom: 0;
+}
+
+#logo-text {
+    font-size: 2rem;
+    letter-spacing: -1px;
+}
+
+/* Header Action Controls */
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 0.45rem 0.9rem;
+    border-radius: 30px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #84cc16;
+}
+
+.pulse-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #84cc16;
+    box-shadow: 0 0 8px #84cc16;
+    animation: statusPulse 2s infinite ease-in-out;
+}
+
+@keyframes statusPulse {
+    0% { transform: scale(0.9); opacity: 0.7; }
+    50% { transform: scale(1.2); opacity: 1; box-shadow: 0 0 12px #84cc16; }
+    100% { transform: scale(0.9); opacity: 0.7; }
+}
+
+.btn-install {
+    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+    color: #fff;
+    border: none;
+    padding: 0.5rem 1.1rem;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-heading);
+    font-weight: 700;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    transition: var(--transition);
+    box-shadow: 0 4px 15px var(--primary-glow);
+}
+
+.btn-install:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px var(--accent-glow);
+}
+
+.btn-install i {
+    font-size: 0.95rem;
+}
+
+/* SaaS Grid Layout styling */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 1.7fr 1fr;
+    gap: 1.5rem;
+    align-items: start;
+    width: 100%;
+}
+
+.dashboard-main {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    min-width: 0;
+}
+
+.dashboard-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    min-width: 0;
+}
+
+/* Core Decryptors (Node Pool) styles */
+.node-pool-section h3 {
+    font-family: var(--font-heading);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 0.5rem;
+}
+
+.node-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+    margin-top: 0.8rem;
+}
+
+.node-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    transition: var(--transition);
+}
+
+.node-item:hover {
+    background: rgba(255, 255, 255, 0.035);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.node-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.node-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+}
+
+.node-dot.online {
+    background: #10b981;
+    box-shadow: 0 0 8px #10b981;
+}
+
+.node-name {
+    font-weight: 500;
+    color: var(--text-main);
+}
+
+.node-ping {
+    font-family: var(--font-heading);
+    font-size: 0.75rem;
+    color: #10b981;
+    font-weight: 700;
+}
+
+.node-bypass-txt {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.node-bypass-txt i {
+    color: var(--primary-color);
+}
+
+/* Compact History Card Overrides for Sidebar Layout */
+.history-section h3 {
+    font-family: var(--font-heading);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.history-section .history-card {
+    padding: 0.6rem 0.8rem;
+    gap: 0.75rem;
+    border-radius: var(--radius-sm);
+}
+
+.history-section .history-thumb {
+    width: 56px;
+    border-radius: 6px;
+}
+
+.history-section .history-video-title {
+    font-size: 0.85rem;
+}
+
+.history-section .history-video-author {
+    font-size: 0.75rem;
+}
+
+/* License and limits feature grid styling */
+.info-features-section h3 {
+    font-family: var(--font-heading);
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 0.5rem;
+}
+
+.features-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.7rem;
+    margin-top: 0.8rem;
+}
+
+.feature-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    padding: 0.65rem;
+    border-radius: var(--radius-sm);
+    text-align: center;
+    transition: var(--transition);
+}
+
+.feature-badge:hover {
+    background: rgba(255, 255, 255, 0.035);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.feature-badge .f-title {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.feature-badge .f-val {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #fff;
+    margin-top: 0.25rem;
+    background: linear-gradient(135deg, #fff, var(--text-muted));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* Utility Hidden & Helper Removal overrides */
+.hidden {
+    display: none !important;
+}
+
+#downloader-card-desc,
+.disclaimer,
+.pane-help,
+.tagline {
+    display: none !important;
+}
+
+/* Responsive Grid Adapters */
+@media (max-width: 900px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+    
+    .app-header {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: center;
+        text-align: center;
+    }
+    
+    .header-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+}
+
+@media (max-width: 620px) {
+    .app-container {
+        padding: 1.5rem 0.8rem;
+    }
+    
+    .app-header {
+        padding: 1rem;
+    }
+    
+    #logo-text {
+        font-size: 1.8rem;
+    }
+}
