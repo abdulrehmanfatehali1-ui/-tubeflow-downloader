@@ -144,14 +144,6 @@ const platformConfigs = {
         badgeText: 'Universal Mode',
         cardTitle: 'Universal All Video Downloader',
         cardDesc: 'TubeFlow extracts high-speed video streams from Twitter (X), Reddit, Twitch, Vimeo, DailyMotion, and 1,000+ supported sites.'
-    },
-    sms: {
-        themeClass: 'theme-sms',
-        placeholder: 'Not used',
-        iconClass: 'fa-solid fa-comment-sms',
-        badgeText: 'SMS Mode',
-        cardTitle: 'Temporary Virtual SMS Receiver',
-        cardDesc: 'Select a country and phone number to fetch verification messages online.'
     }
 };
 
@@ -207,38 +199,22 @@ function selectPlatform(platform, element = null) {
         const prefix = platform === 'youtube' ? 'btn-yt' : 
                        (platform === 'instagram' ? 'btn-ig' : 
                        (platform === 'tiktok' ? 'btn-tt' : 
-                       (platform === 'facebook' ? 'btn-fb' : 
-                       (platform === 'sms' ? 'btn-sms' : 'btn-uni'))));
+                       (platform === 'facebook' ? 'btn-fb' : 'btn-uni')));
         const activeTabButton = document.querySelector(`.${prefix}`);
         if (activeTabButton) activeTabButton.classList.add('active');
     }
     
     // Apply theme shifting class on body
     const cfg = platformConfigs[platform];
-    bodyEl.className = cfg.themeClass;
-    
-    // Update Input UI dynamically
-    urlInput.placeholder = cfg.placeholder;
-    dynamicInputIcon.className = `${cfg.iconClass} input-icon`;
-    activePlatformBadge.textContent = cfg.badgeText;
-    downloaderCardTitle.textContent = cfg.cardTitle;
-    downloaderCardDesc.textContent = cfg.cardDesc;
-
-    // Toggle Downloader Console vs SMS Console panels
-    const downloaderCard = document.getElementById('main-downloader-card');
-    const smsSection = document.getElementById('sms-section');
-    
-    if (platform === 'sms') {
-        if (downloaderCard) downloaderCard.classList.add('hidden');
-        if (resultsSection) resultsSection.classList.add('hidden');
-        if (progressSection) progressSection.classList.add('hidden');
-        if (smsSection) {
-            smsSection.classList.remove('hidden');
-            loadSMSCountries(); // load countries if not loaded yet
-        }
-    } else {
-        if (downloaderCard) downloaderCard.classList.remove('hidden');
-        if (smsSection) smsSection.classList.add('hidden');
+    if (cfg) {
+        bodyEl.className = cfg.themeClass;
+        
+        // Update Input UI dynamically
+        urlInput.placeholder = cfg.placeholder;
+        dynamicInputIcon.className = `${cfg.iconClass} input-icon`;
+        activePlatformBadge.textContent = cfg.badgeText;
+        downloaderCardTitle.textContent = cfg.cardTitle;
+        downloaderCardDesc.textContent = cfg.cardDesc;
     }
 }
 
@@ -1903,3 +1879,661 @@ function escapeHtml(unsafe) {
          .replace(/"/g, "&quot;")
          .replace(/'/g, "&#039;");
 }
+
+/* ==========================================================================
+   10. VERTICAL NAVIGATION SIDEBAR CONSOLE
+   ========================================================================== */
+let currentMainPanel = 'downloader';
+
+function switchMainPanel(panelId, btnElement) {
+    currentMainPanel = panelId;
+    
+    // Hide all main panels
+    const panels = document.querySelectorAll('.main-panel');
+    panels.forEach(p => p.classList.remove('active'));
+    
+    // Show target panel
+    const activePanel = document.getElementById(`panel-${panelId}`);
+    if (activePanel) {
+        activePanel.classList.add('active');
+    }
+    
+    // Reset and assign navigation tab highlights
+    const navTabs = document.querySelectorAll('.nav-tab');
+    navTabs.forEach(tab => tab.classList.remove('active'));
+    
+    if (btnElement) {
+        btnElement.classList.add('active');
+    } else {
+        const matchingBtn = document.getElementById(`nav-btn-${panelId}`);
+        if (matchingBtn) matchingBtn.classList.add('active');
+    }
+    
+    // Switch background moving glows themes dynamically
+    if (panelId === 'downloader') {
+        const config = platformConfigs[activePlatform];
+        if (config) {
+            document.body.className = config.themeClass;
+        }
+    } else if (panelId === 'sms') {
+        document.body.className = 'theme-sms';
+        loadSMSCountries(); // load countries list if standby
+    } else if (panelId === 'mail') {
+        document.body.className = 'theme-mail';
+        initTempMail(); // load / sync disposable accounts
+    }
+    
+    // Close sidebar slide drawer on narrow mobile views
+    const sidebar = document.querySelector('.app-sidebar');
+    if (sidebar) {
+        sidebar.classList.remove('open');
+    }
+}
+
+function toggleMobileSidebar() {
+    const sidebar = document.querySelector('.app-sidebar');
+    if (sidebar) {
+        sidebar.classList.toggle('open');
+    }
+}
+
+/* ==========================================================================
+   11. TEMP MAIL MODULE (DISPOSABLE EMAIL CONTROLLER)
+   ========================================================================== */
+let mailAccounts = [];
+let activeMailAddress = '';
+let activeMailMessages = [];
+let mailRefreshInterval = null;
+let currentMailMessage = null;
+
+// Initialize Temp Mail pane
+function initTempMail() {
+    loadMailAccounts();
+    if (mailAccounts.length === 0) {
+        spawnNewEmailAddress();
+    } else {
+        setActiveEmailAccount(activeMailAddress);
+    }
+}
+
+// LocalStorage caching
+function saveMailAccounts() {
+    localStorage.setItem('tubeflow_mail_accounts', JSON.stringify(mailAccounts));
+    localStorage.setItem('tubeflow_active_mail', activeMailAddress);
+}
+
+function loadMailAccounts() {
+    try {
+        const stored = localStorage.getItem('tubeflow_mail_accounts');
+        const active = localStorage.getItem('tubeflow_active_mail');
+        if (stored) {
+            mailAccounts = JSON.parse(stored);
+        }
+        if (active && mailAccounts.some(acc => acc.email === active)) {
+            activeMailAddress = active;
+        } else if (mailAccounts.length > 0) {
+            activeMailAddress = mailAccounts[0].email;
+        }
+    } catch (e) {
+        console.error('Error loading mail from localStorage:', e);
+    }
+}
+
+// Random prefix generator helper
+function randomizeEmailPrefix() {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    let prefix = 'mail_';
+    for (let i = 0; i < 7; i++) {
+        prefix += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    const input = document.getElementById('mail-custom-prefix');
+    if (input) input.value = prefix;
+}
+
+// Spawn / generate a new email address
+async function spawnNewEmailAddress() {
+    const prefixInput = document.getElementById('mail-custom-prefix');
+    const domainSelect = document.getElementById('mail-domain-select');
+    
+    let email = '';
+    let login = '';
+    let domain = '';
+    
+    const customPrefix = prefixInput ? prefixInput.value.trim().toLowerCase() : '';
+    const selectedDomain = domainSelect ? domainSelect.value : '1secmail.com';
+    
+    if (customPrefix) {
+        login = customPrefix.replace(/[^a-z0-9_.-]/g, '');
+        if (!login) {
+            alert('Custom prefix must be alphanumeric (letters, numbers, underscores, dots, hyphens)!');
+            return;
+        }
+        domain = selectedDomain;
+        email = `${login}@${domain}`;
+        addEmailAccountNode(email, login, domain);
+        if (prefixInput) prefixInput.value = '';
+    } else {
+        const generateBtn = document.querySelector('.mail-select-row button');
+        if (generateBtn) {
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Loading';
+        }
+        try {
+            const r = await fetch('/api/mail?action=gen');
+            const data = await r.json();
+            if (data && data.length > 0) {
+                const generatedEmail = data[0];
+                const parts = generatedEmail.split('@');
+                login = parts[0];
+                domain = parts[1];
+                addEmailAccountNode(generatedEmail, login, domain);
+            } else {
+                throw new Error('Empty API response');
+            }
+        } catch (e) {
+            console.warn('Error fetching random mail from API, using fallback generator:', e);
+            login = 'temp_' + Math.random().toString(36).substring(2, 9);
+            domain = selectedDomain;
+            email = `${login}@${domain}`;
+            addEmailAccountNode(email, login, domain);
+        } finally {
+            if (generateBtn) {
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = '<i class="fa-solid fa-plus"></i> Generate';
+            }
+        }
+    }
+}
+
+// Add account to lists
+function addEmailAccountNode(email, login, domain) {
+    if (!mailAccounts.some(acc => acc.email === email)) {
+        mailAccounts.unshift({ email, login, domain });
+        if (mailAccounts.length > 8) {
+            mailAccounts.pop(); // limit nodes size to 8
+        }
+    }
+    
+    setActiveEmailAccount(email);
+    saveMailAccounts();
+    renderMailNodes();
+}
+
+// Change active mailbox
+function setActiveEmailAccount(email) {
+    activeMailAddress = email;
+    
+    const addrEl = document.getElementById('active-email-address-text');
+    if (addrEl) addrEl.textContent = email;
+    
+    const inboxContainer = document.getElementById('mail-inbox-list-container');
+    if (inboxContainer) {
+        inboxContainer.innerHTML = '<div class="mail-empty-state"><i class="fa-solid fa-circle-notch fa-spin"></i> Syncing incoming stream...</div>';
+    }
+    
+    closeMailViewer();
+    renderMailNodes();
+    
+    const mockTo = document.getElementById('mock-mail-to');
+    if (mockTo) mockTo.value = email;
+    
+    refreshEmailInbox();
+    startMailPolling();
+}
+
+// Background polling manager
+function startMailPolling() {
+    if (mailRefreshInterval) clearInterval(mailRefreshInterval);
+    mailRefreshInterval = setInterval(() => {
+        if (currentMainPanel === 'mail' && activeMailAddress) {
+            refreshEmailInbox(true); // silent check
+        }
+    }, 5000);
+}
+
+// Render active accounts list
+function renderMailNodes() {
+    const container = document.getElementById('mail-nodes-list-container');
+    const badge = document.getElementById('mail-node-count-badge');
+    if (!container) return;
+    
+    if (badge) {
+        badge.textContent = `${mailAccounts.length} Node${mailAccounts.length !== 1 ? 's' : ''}`;
+    }
+    
+    if (mailAccounts.length === 0) {
+        container.innerHTML = '<div style="text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 1rem 0;">No active nodes.</div>';
+        return;
+    }
+    
+    container.innerHTML = mailAccounts.map(acc => `
+        <div class="mail-node-item ${acc.email === activeMailAddress ? 'active' : ''}" onclick="setActiveEmailAccount('${acc.email}')">
+            <span title="${acc.email}">${acc.email}</span>
+            <button onclick="event.stopPropagation(); deleteMailAccount('${acc.email}')" title="Delete account">
+                <i class="fa-solid fa-trash-can"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+// Delete mailbox account
+function deleteMailAccount(email) {
+    // Clear mocks for this account
+    localStorage.removeItem(`tubeflow_mock_mails_${email}`);
+    
+    mailAccounts = mailAccounts.filter(acc => acc.email !== email);
+    
+    if (activeMailAddress === email) {
+        if (mailAccounts.length > 0) {
+            setActiveEmailAccount(mailAccounts[0].email);
+        } else {
+            activeMailAddress = '';
+            const addrEl = document.getElementById('active-email-address-text');
+            if (addrEl) addrEl.textContent = 'Generating address...';
+            const listContainer = document.getElementById('mail-nodes-list-container');
+            if (listContainer) listContainer.innerHTML = '';
+            const countBadge = document.getElementById('mail-node-count-badge');
+            if (countBadge) countBadge.textContent = '0 Nodes';
+            spawnNewEmailAddress();
+            return;
+        }
+    }
+    saveMailAccounts();
+    renderMailNodes();
+}
+
+// Force Sync / Fetch incoming stream
+async function refreshEmailInbox(silent = false) {
+    if (!activeMailAddress) return;
+    
+    const account = mailAccounts.find(acc => acc.email === activeMailAddress);
+    if (!account) return;
+    
+    const listContainer = document.getElementById('mail-inbox-list-container');
+    const refreshBtn = document.querySelector('.mail-header-buttons button[onclick="refreshEmailInbox()"]');
+    
+    if (refreshBtn && !silent) {
+        refreshBtn.disabled = true;
+        const icon = refreshBtn.querySelector('i');
+        if (icon) icon.className = 'fa-solid fa-rotate fa-spin';
+    }
+    
+    try {
+        const r = await fetch(`/api/mail?action=getMessages&login=${encodeURIComponent(account.login)}&domain=${encodeURIComponent(account.domain)}`);
+        const messages = await r.json();
+        
+        if (messages.error) {
+            throw new Error(messages.error);
+        }
+        
+        activeMailMessages = messages || [];
+        
+        // Merge mock injected emails
+        const mockKey = `tubeflow_mock_mails_${activeMailAddress}`;
+        const mockMails = JSON.parse(localStorage.getItem(mockKey) || '[]');
+        
+        let combinedMails = [...mockMails, ...activeMailMessages];
+        combinedMails.sort((a, b) => b.id - a.id); // sort descending
+        
+        renderMailInboxList(combinedMails);
+    } catch (e) {
+        console.error('Error syncing mail inbox:', e);
+        if (!silent && listContainer) {
+            listContainer.innerHTML = `<div class="mail-empty-state" style="color: #fca5a5;"><i class="fa-solid fa-triangle-exclamation"></i> Sync Error: ${e.message}</div>`;
+        }
+    } finally {
+        if (refreshBtn && !silent) {
+            refreshBtn.disabled = false;
+            const icon = refreshBtn.querySelector('i');
+            if (icon) icon.className = 'fa-solid fa-rotate';
+        }
+    }
+}
+
+// Render emails inside left inbox panel column
+function renderMailInboxList(messages) {
+    const container = document.getElementById('mail-inbox-list-container');
+    if (!container) return;
+    
+    if (messages.length === 0) {
+        container.innerHTML = `
+            <div class="mail-empty-state">
+                <i class="fa-solid fa-envelope-open-text"></i>
+                <p>No messages received yet. Waiting for incoming verifications...</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = messages.map(msg => {
+        const isActive = currentMailMessage && currentMailMessage.id === msg.id;
+        const subject = msg.subject || '(No Subject)';
+        const dateStr = msg.date || '';
+        const timeOnly = dateStr.includes(' ') ? dateStr.split(' ')[1] : dateStr;
+        
+        return `
+            <div class="mail-card ${isActive ? 'active' : ''}" id="mail-card-${msg.id}" onclick="selectMailMessage(${msg.id})">
+                <div class="mail-card-header">
+                    <span class="mail-card-sender" title="${escapeHtml(msg.from)}">${escapeHtml(msg.from.split('<')[0] || msg.from)}</span>
+                    <span class="mail-card-time">${escapeHtml(timeOnly)}</span>
+                </div>
+                <div class="mail-card-subject" title="${escapeHtml(subject)}">${escapeHtml(subject)}</div>
+                <div class="mail-card-snippet">Click to decrypt payload...</div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Select email message from incoming stream
+async function selectMailMessage(id) {
+    const cards = document.querySelectorAll('.mail-card');
+    cards.forEach(card => card.classList.remove('active'));
+    
+    const selectedCard = document.getElementById(`mail-card-${id}`);
+    if (selectedCard) selectedCard.classList.add('active');
+    
+    document.getElementById('mail-viewer-placeholder').classList.add('hidden');
+    document.getElementById('mail-viewer-content').classList.remove('hidden');
+    
+    const senderNameEl = document.getElementById('mail-msg-sender-name');
+    const senderAddrEl = document.getElementById('mail-msg-sender-address');
+    const subjectEl = document.getElementById('mail-msg-subject');
+    const timeEl = document.getElementById('mail-msg-time');
+    const textPlainBox = document.getElementById('mail-text-plain-box');
+    const htmlFrame = document.getElementById('mail-html-frame');
+    
+    senderNameEl.textContent = 'Decrypting...';
+    senderAddrEl.textContent = '';
+    subjectEl.textContent = 'Syncing message packet...';
+    timeEl.textContent = '00:00:00';
+    textPlainBox.textContent = '';
+    if (htmlFrame) htmlFrame.src = 'about:blank';
+    
+    // Check if mock
+    const mockKey = `tubeflow_mock_mails_${activeMailAddress}`;
+    const mockMails = JSON.parse(localStorage.getItem(mockKey) || '[]');
+    const mockMsg = mockMails.find(m => m.id === id);
+    
+    let msgDetails = null;
+    
+    if (mockMsg) {
+        msgDetails = mockMsg;
+    } else {
+        const account = mailAccounts.find(acc => acc.email === activeMailAddress);
+        if (!account) return;
+        
+        try {
+            const r = await fetch(`/api/mail?action=readMessage&login=${encodeURIComponent(account.login)}&domain=${encodeURIComponent(account.domain)}&id=${id}`);
+            const data = await r.json();
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            msgDetails = data;
+        } catch (e) {
+            console.error('Error fetching email body:', e);
+            senderNameEl.textContent = 'Error';
+            subjectEl.textContent = 'Failed to decrypt email packet';
+            textPlainBox.textContent = e.message;
+            return;
+        }
+    }
+    
+    currentMailMessage = msgDetails;
+    
+    const fromStr = msgDetails.from || '';
+    const namePart = fromStr.includes('<') ? fromStr.split('<')[0].trim() : fromStr.split('@')[0];
+    const addrPart = fromStr.includes('<') ? fromStr.split('<')[1].replace('>', '').trim() : fromStr;
+    
+    senderNameEl.textContent = namePart || 'Sender';
+    senderAddrEl.textContent = addrPart;
+    subjectEl.textContent = msgDetails.subject || '(No Subject)';
+    
+    const dateStr = msgDetails.date || '';
+    const timeOnly = dateStr.includes(' ') ? dateStr.split(' ')[1] : dateStr;
+    timeEl.textContent = timeOnly;
+    
+    const avatarEl = document.getElementById('mail-sender-avatar-letter');
+    if (avatarEl) {
+        avatarEl.textContent = (namePart.charAt(0) || 'S').toUpperCase();
+    }
+    
+    const textBody = msgDetails.textBody || '';
+    const htmlBody = msgDetails.htmlBody || '';
+    
+    textPlainBox.textContent = textBody;
+    
+    if (htmlFrame) {
+        let cleanHtml = htmlBody || textBody.replace(/\n/g, '<br>');
+        htmlFrame.srcdoc = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body {
+                        font-family: sans-serif;
+                        font-size: 14px;
+                        color: #1e293b;
+                        line-height: 1.5;
+                        padding: 10px;
+                        margin: 0;
+                    }
+                    a { color: #10b981; }
+                </style>
+            </head>
+            <body>${cleanHtml}</body>
+            </html>
+        `;
+    }
+    
+    if (htmlBody) {
+        switchMailViewTab('rich');
+    } else {
+        switchMailViewTab('plain');
+    }
+    
+    detectAndDisplayOTP(msgDetails.subject + ' ' + textBody + ' ' + htmlBody);
+}
+
+// Switch between Rich HTML render and Plain decrypt text tabs
+function switchMailViewTab(tab) {
+    const richBtn = document.getElementById('mail-view-tab-rich');
+    const plainBtn = document.getElementById('mail-view-tab-plain');
+    const bodyPaneRich = document.getElementById('mail-body-pane-rich');
+    const bodyPanePlain = document.getElementById('mail-body-pane-plain');
+    
+    if (tab === 'rich') {
+        if (richBtn) richBtn.classList.add('active');
+        if (plainBtn) plainBtn.classList.remove('active');
+        if (bodyPaneRich) bodyPaneRich.classList.add('active');
+        if (bodyPanePlain) bodyPanePlain.classList.remove('active');
+    } else {
+        if (richBtn) richBtn.classList.remove('active');
+        if (plainBtn) plainBtn.classList.add('active');
+        if (bodyPaneRich) bodyPaneRich.classList.remove('active');
+        if (bodyPanePlain) bodyPanePlain.classList.add('active');
+    }
+}
+
+// Close message view pane
+function closeMailViewer() {
+    currentMailMessage = null;
+    const viewContent = document.getElementById('mail-viewer-content');
+    const viewPlaceholder = document.getElementById('mail-viewer-placeholder');
+    const otpBanner = document.getElementById('mail-otp-banner');
+    
+    if (viewContent) viewContent.classList.add('hidden');
+    if (viewPlaceholder) viewPlaceholder.classList.remove('hidden');
+    if (otpBanner) otpBanner.classList.add('hidden');
+}
+
+// Copy active email address
+function copyActiveEmailAddress() {
+    if (!activeMailAddress) return;
+    navigator.clipboard.writeText(activeMailAddress).then(() => {
+        showToastNotification('Email address copied!');
+    }).catch(err => {
+        console.error('Copy failed:', err);
+    });
+}
+
+// Smart Regex Extractor for verifications codes (OTP)
+function detectAndDisplayOTP(content) {
+    const banner = document.getElementById('mail-otp-banner');
+    const codeVal = document.getElementById('mail-otp-code-value');
+    const copyBtn = document.getElementById('mail-otp-copy-btn');
+    
+    if (!banner || !codeVal) return;
+    
+    banner.classList.add('hidden');
+    
+    let matchedCode = null;
+    
+    // Regex 1: look for specific keyword patterns followed by alphanumeric codes
+    const keywordRegex = /(?:code|otp|verification|passcode|pin|activation|confirm|security)(?:\s+is|\s*[:=-])?\s*([0-9]{4,8}(?:-[0-9]{3,8})?|[a-z0-9]{6,8})/i;
+    const kwMatch = content.match(keywordRegex);
+    
+    if (kwMatch && kwMatch[1]) {
+        matchedCode = kwMatch[1].replace(/[-\s]/g, '').trim();
+    } else {
+        // Regex 2: Fallback to searching for isolated 6-digit number
+        const numberRegex = /\b([0-9]{6})\b/;
+        const numMatch = content.match(numberRegex);
+        if (numMatch && numMatch[1]) {
+            matchedCode = numMatch[1];
+        }
+    }
+    
+    if (matchedCode && matchedCode.length >= 4) {
+        codeVal.textContent = matchedCode.toUpperCase();
+        banner.classList.remove('hidden');
+        
+        copyBtn.onclick = () => {
+            navigator.clipboard.writeText(matchedCode.toUpperCase()).then(() => {
+                showToastNotification('Verification code copied!');
+            });
+        };
+    }
+}
+
+// Mock Mail Simulator Drawer Handlers
+function openMockMailerDrawer() {
+    const drawer = document.getElementById('mail-drawer');
+    const overlay = document.getElementById('mail-drawer-overlay');
+    const mockTo = document.getElementById('mock-mail-to');
+    
+    if (drawer && overlay) {
+        drawer.classList.remove('hidden');
+        overlay.classList.remove('hidden');
+    }
+    
+    if (mockTo) {
+        mockTo.value = activeMailAddress || 'None (Generate first)';
+    }
+}
+
+function closeMockMailerDrawer() {
+    const drawer = document.getElementById('mail-drawer');
+    const overlay = document.getElementById('mail-drawer-overlay');
+    if (drawer && overlay) {
+        drawer.classList.add('hidden');
+        overlay.classList.add('hidden');
+    }
+}
+
+// Preset loader for Packet Simulator
+function loadMockEmailPreset(presetName) {
+    const fromEl = document.getElementById('mock-mail-from');
+    const nameEl = document.getElementById('mock-mail-sender-name');
+    const subjectEl = document.getElementById('mock-mail-subject');
+    const bodyEl = document.getElementById('mock-mail-body');
+    
+    if (!fromEl || !nameEl || !subjectEl || !bodyEl) return;
+    
+    const code = Math.floor(100000 + Math.random() * 900000);
+    
+    if (presetName === 'google') {
+        fromEl.value = 'security@accounts.google.com';
+        nameEl.value = 'Google Accounts';
+        subjectEl.value = `${code} is your Google verification code`;
+        bodyEl.value = `
+<div style="font-family: Roboto,sans-serif; border: 1px solid #e0e0e0; padding: 45px 30px; border-radius: 8px; max-width: 500px; margin: 0 auto; background-color: #ffffff; color: #3c4043;">
+    <h2 style="font-size: 24px; font-weight: normal; color: #202124; margin: 0 0 16px 0; text-align: center;">Verify your email</h2>
+    <p style="font-size: 14px; color: #5f6368; line-height: 1.5; margin: 0 0 24px 0;">Google has received a request to log in to your account. Use the following credentials code to authorize access:</p>
+    <div style="background-color: #f1f3f4; border-radius: 6px; padding: 20px; font-size: 34px; font-weight: bold; text-align: center; letter-spacing: 5px; color: #1a73e8; margin-bottom: 24px;">${code}</div>
+    <p style="font-size: 12px; color: #9aa0a6; line-height: 1.5; margin: 0; text-align: center;">This code will expire in 10 minutes. If you did not request this code, please secure your account credentials.</p>
+</div>`;
+    } else if (presetName === 'github') {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        let ghCode = '';
+        for (let i = 0; i < 8; i++) ghCode += chars.charAt(Math.floor(Math.random() * chars.length));
+        
+        fromEl.value = 'noreply@github.com';
+        nameEl.value = 'GitHub Device Security';
+        subjectEl.value = `[GitHub] Please verify your device - Activation code: ${ghCode}`;
+        bodyEl.value = `
+<div style="font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif; padding: 30px; max-width: 550px; border: 1px solid #d0d7de; border-radius: 6px; margin: 0 auto; color: #24292f; background-color: #ffffff;">
+    <h3 style="font-size: 20px; font-weight: 600; margin-top: 0; margin-bottom: 16px;">Device Activation</h3>
+    <p style="line-height: 1.5; font-size: 14px; margin-bottom: 24px;">A new device was logged into your GitHub account. Confirm this browser access by entering the following credentials code:</p>
+    <div style="font-size: 30px; font-weight: 700; color: #0969da; letter-spacing: 3px; text-align: center; border: 1px dashed #0969da; padding: 15px; border-radius: 6px; background-color: #f6f8fa; margin-bottom: 24px;">${ghCode}</div>
+    <p style="font-size: 12px; color: #57606a; line-height: 1.5;">If this wasn't you, your credentials might be leaked. Change your account password immediately.</p>
+</div>`;
+    } else if (presetName === 'netflix') {
+        fromEl.value = 'info@account.netflix.com';
+        nameEl.value = 'Netflix Service';
+        subjectEl.value = `Your Netflix verification code: ${code}`;
+        bodyEl.value = `
+<div style="background-color: #111111; color: #ffffff; padding: 45px 30px; font-family: Helvetica,Arial,sans-serif; max-width: 500px; border-radius: 6px; margin: 0 auto; text-align: center;">
+    <h1 style="color: #e50914; font-size: 36px; font-weight: bold; margin: 0 0 25px 0; letter-spacing: 1px;">NETFLIX</h1>
+    <h2 style="font-size: 22px; color: #ffffff; margin-bottom: 15px; font-weight: normal;">Confirm playback login</h2>
+    <p style="color: #cccccc; font-size: 14px; line-height: 1.5; margin-bottom: 25px;">Enter the following OTP code to authorize streaming on this machine:</p>
+    <div style="font-size: 40px; font-weight: bold; color: #ffffff; letter-spacing: 5px; margin-bottom: 30px; text-shadow: 0 0 10px rgba(229, 9, 20, 0.4);">${code}</div>
+    <p style="color: #666666; font-size: 12px;">This code is valid for 15 minutes. Enjoy your movies!</p>
+</div>`;
+    }
+}
+
+// Inject mock mail into browser sandbox localStorage inbox
+function injectMockMail() {
+    if (!activeMailAddress) {
+        alert('Please generate a temporary email node first!');
+        return;
+    }
+    
+    const fromVal = document.getElementById('mock-mail-from').value.trim();
+    const nameVal = document.getElementById('mock-mail-sender-name').value.trim();
+    const subjectVal = document.getElementById('mock-mail-subject').value.trim();
+    const bodyVal = document.getElementById('mock-mail-body').value.trim();
+    
+    if (!fromVal || !subjectVal || !bodyVal) {
+        alert('Please fill all required packet fields!');
+        return;
+    }
+    
+    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const id = 990000 + Math.floor(Math.random() * 9999);
+    
+    const signature = nameVal ? `${nameVal} <${fromVal}>` : fromVal;
+    
+    const mockMsg = {
+        id: id,
+        from: signature,
+        subject: subjectVal,
+        date: timestamp,
+        textBody: bodyVal.replace(/<[^>]*>/g, ''), // Plain snippet
+        htmlBody: bodyVal
+    };
+    
+    const mockKey = `tubeflow_mock_mails_${activeMailAddress}`;
+    const mockMails = JSON.parse(localStorage.getItem(mockKey) || '[]');
+    mockMails.unshift(mockMsg);
+    localStorage.setItem(mockKey, JSON.stringify(mockMails));
+    
+    closeMockMailerDrawer();
+    
+    const form = document.getElementById('mock-mailer-form');
+    if (form) form.reset();
+    
+    refreshEmailInbox();
+    showToastNotification('Mock verification packet injected!');
+}
+

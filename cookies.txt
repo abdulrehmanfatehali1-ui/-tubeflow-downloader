@@ -983,5 +983,5 @@ prebid.media.net	FALSE	/	TRUE	1795888490	receive-cookie-deprecation	1
 api.hcaptcha.com	FALSE	/	TRUE	1782912781	hmt_id	c69c2a60-6463-4a88-9273-462cd2fea640
 .ais-dev-kgpyemqyylpldvrh7qdu2o-12407393514.asia-southeast1.run.app	TRUE	/	TRUE	1782890583	__SECURE-aistudio_auth_token	rMpIgNwbe7EtuPziLfzDrodJEweherL3O6ZnOyqUL2g=
 mpsnare.iesnare.com	FALSE	/	TRUE	1811853592	io_token_7c6a6574-f011-4c9a-abdd-9894a102ccef	YYOIiaAujVfXepsIdD3ATw5/RoRIQqeXwrG1mDnGtS4=
-pin.it	FALSE	/	TRUE	1780471798	_ir	0
-api.pinterest.com	FALSE	/	TRUE	1780471800	_ir	0
+pin.it	FALSE	/	TRUE	1780472588	_ir	0
+api.pinterest.com	FALSE	/	TRUE	1780472589	_ir	0

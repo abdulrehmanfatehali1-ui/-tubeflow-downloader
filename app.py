@@ -2026,6 +2026,43 @@ def get_sms_inbox():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# Stateless 1secmail proxy route for Temp Mail
+@app.route('/api/mail')
+def api_mail_proxy():
+    action = request.args.get('action')
+    if not action:
+        return jsonify({'error': 'Action is required'}), 400
+        
+    target_url = 'https://www.1secmail.com/api/v1/'
+    
+    if action == 'gen':
+        target_url += '?action=genEmailAddresses&count=5'
+    elif action == 'getMessages':
+        login = request.args.get('login')
+        domain = request.args.get('domain')
+        if not login or not domain:
+            return jsonify({'error': 'Missing login or domain parameters'}), 400
+        target_url += f"?action=getMessages&login={urllib.parse.quote(login)}&domain={urllib.parse.quote(domain)}"
+    elif action == 'readMessage':
+        login = request.args.get('login')
+        domain = request.args.get('domain')
+        msg_id = request.args.get('id')
+        if not login or not domain or not msg_id:
+            return jsonify({'error': 'Missing login, domain or id parameters'}), 400
+        target_url += f"?action=readMessage&login={urllib.parse.quote(login)}&domain={urllib.parse.quote(domain)}&id={urllib.parse.quote(msg_id)}"
+    else:
+        return jsonify({'error': 'Invalid action'}), 400
+        
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        r = requests.get(target_url, headers=headers, timeout=10)
+        r.raise_for_status()
+        return jsonify(r.json())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 def run_server_on_android():
     os.makedirs('static', exist_ok=True)
     os.makedirs('templates', exist_ok=True)

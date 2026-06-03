@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TubeFlow SaaS - Premium Multi-Platform Downloader</title>
-    <meta name="description" content="Download high-quality videos and audios from YouTube, TikTok, and Instagram instantly with TubeFlow. The world's most premium ad-free downloader.">
+    <title>TubeFlow SaaS - Premium Multi-Platform Dashboard</title>
+    <meta name="description" content="Download high-quality videos and audios instantly and receive virtual temporary phone numbers & emails online. TubeFlow premium glassmorphic suite.">
     
     <!-- PWA Settings -->
     <link rel="manifest" href="manifest.json">
@@ -30,320 +30,521 @@
     <div class="glow-orb orb-2" id="orb-2"></div>
     <div class="glow-orb orb-3" id="orb-3"></div>
 
-    <div class="app-container">
-        <!-- Top Navbar -->
-        <header class="app-header">
+    <div class="app-shell">
+        <!-- Left Sidebar Navigation -->
+        <aside class="app-sidebar">
             <div class="logo-area">
                 <div class="logo-icon">
                     <i class="fa-solid fa-bolt"></i>
                 </div>
-                <h1 id="logo-text">Tube<span>Flow</span> <span class="badge-hq">SaaS</span></h1>
+                <h1 id="logo-text">Tube<span>Flow</span></h1>
             </div>
             
-            <div class="header-actions">
-                <div class="status-indicator">
-                    <span class="pulse-dot"></span>
-                    <span class="status-label">Engine: Active</span>
-                </div>
-                <button id="install-app-btn" class="btn btn-install hidden">
+            <nav class="sidebar-nav">
+                <button class="nav-tab active" id="nav-btn-downloader" onclick="switchMainPanel('downloader', this)">
                     <i class="fa-solid fa-cloud-arrow-down"></i>
-                    <span>Install App</span>
+                    <span>Video Tools</span>
                 </button>
-            </div>
-        </header>
-
-        <!-- Dashboard Layout Grid -->
-        <div class="dashboard-grid">
+                <button class="nav-tab" id="nav-btn-sms" onclick="switchMainPanel('sms', this)">
+                    <i class="fa-solid fa-comment-sms"></i>
+                    <span>Temp Numbers</span>
+                </button>
+                <button class="nav-tab" id="nav-btn-mail" onclick="switchMainPanel('mail', this)">
+                    <i class="fa-solid fa-envelope-open-text"></i>
+                    <span>Temp Mail</span>
+                </button>
+            </nav>
             
-            <!-- Left Side: Downloader Console -->
-            <div class="dashboard-main">
-                <!-- Platform Selector -->
-                <div class="platform-tabs glass-panel">
-                    <button class="platform-tab active btn-yt" onclick="selectPlatform('youtube', this)">
-                        <i class="fa-brands fa-youtube icon-platform"></i>
-                        <span>YouTube</span>
+            <div class="sidebar-footer">
+                <span class="badge-hq">Enterprise</span>
+            </div>
+        </aside>
+
+        <!-- Right Main Content Section -->
+        <main class="app-main-content">
+            <!-- Top Navbar -->
+            <header class="app-header">
+                <div class="header-logo-mobile">
+                    <button class="mobile-menu-btn" onclick="toggleMobileSidebar()" aria-label="Toggle Navigation Menu">
+                        <i class="fa-solid fa-bars"></i>
                     </button>
-                    <button class="platform-tab btn-ig" onclick="selectPlatform('instagram', this)">
-                        <i class="fa-brands fa-instagram icon-platform"></i>
-                        <span>Instagram</span>
-                    </button>
-                    <button class="platform-tab btn-tt" onclick="selectPlatform('tiktok', this)">
-                        <i class="fa-brands fa-tiktok icon-platform"></i>
-                        <span>TikTok</span>
-                    </button>
-                    <button class="platform-tab btn-fb" onclick="selectPlatform('facebook', this)">
-                        <i class="fa-brands fa-facebook icon-platform"></i>
-                        <span>Facebook</span>
-                    </button>
-                    <button class="platform-tab btn-uni" onclick="selectPlatform('universal', this)">
-                        <i class="fa-solid fa-globe icon-platform"></i>
-                        <span>Universal</span>
-                    </button>
-                    <button class="platform-tab btn-sms" onclick="selectPlatform('sms', this)">
-                        <i class="fa-solid fa-comment-sms icon-platform"></i>
-                        <span>Temp SMS</span>
+                    <div class="logo-icon-sm"><i class="fa-solid fa-bolt"></i></div>
+                    <span class="logo-text-mobile">Tube<span>Flow</span> <span class="badge-hq">SaaS</span></span>
+                </div>
+                
+                <div class="header-actions">
+                    <div class="status-indicator">
+                        <span class="pulse-dot"></span>
+                        <span class="status-label">Engine: Active</span>
+                    </div>
+                    <button id="install-app-btn" class="btn btn-install hidden">
+                        <i class="fa-solid fa-cloud-arrow-down"></i>
+                        <span>Install App</span>
                     </button>
                 </div>
+            </header>
 
-                <!-- Input Console -->
-                <section class="card glass-card search-section" id="main-downloader-card">
-                    <div class="card-accent-glow"></div>
-                    <div class="header-card-row">
-                        <h2 class="section-title">
-                            <i class="fa-solid fa-terminal font-accent header-dynamic-icon"></i> 
-                            <span id="downloader-card-title">Paste YouTube Link</span>
-                        </h2>
-                        <span class="active-badge" id="active-platform-badge">YouTube Mode</span>
-                    </div>
-                    <p class="section-desc hidden" id="downloader-card-desc">Enter URL to extract media files.</p>
-                    
-                    <form id="fetch-form" onsubmit="event.preventDefault(); handleFetch();">
-                        <div class="input-group">
-                            <div class="input-wrapper">
-                                <i class="fa-brands fa-youtube input-icon" id="dynamic-input-icon"></i>
-                                <input 
-                                    type="url" 
-                                    id="youtube-url" 
-                                    placeholder="Paste link here..." 
-                                    required
-                                    autocomplete="off"
-                                >
-                                <button type="button" id="clear-btn" class="clear-input-btn" title="Clear link">
-                                    <i class="fa-solid fa-xmark"></i>
+            <div class="panel-container">
+                <!-- Panel 1: Video Downloader -->
+                <div id="panel-downloader" class="main-panel active">
+                    <div class="dashboard-grid">
+                        <div class="dashboard-main">
+                            <!-- Platform Selector -->
+                            <div class="platform-tabs glass-panel">
+                                <button class="platform-tab active btn-yt" onclick="selectPlatform('youtube', this)">
+                                    <i class="fa-brands fa-youtube icon-platform"></i>
+                                    <span>YouTube</span>
                                 </button>
-                            </div>
-                            <button type="submit" id="fetch-btn" class="btn btn-primary btn-dynamic-accent">
-                                <span class="btn-text">Extract Link</span>
-                                <span class="btn-loader hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
-                            </button>
-                        </div>
-                    </form>
-
-                    <!-- Feedback Message -->
-                    <div id="status-message" class="status-msg hidden"></div>
-                </section>
-
-                <!-- Video Metadata & Format Download Panel -->
-                <section id="results-section" class="card glass-card results-section hidden">
-                    <div class="video-details-grid">
-                        <!-- Left: Video Preview & Info -->
-                        <div class="video-preview-pane">
-                            <div class="thumbnail-wrapper">
-                                <div id="thumbnail-placeholder" class="thumb-placeholder">
-                                    <i class="fa-solid fa-circle-notch fa-spin"></i>
-                                </div>
-                                <img id="video-thumbnail" referrerpolicy="no-referrer" src="" alt="Video Thumbnail">
-                                <span id="video-duration" class="badge-duration">0:00</span>
-                            </div>
-                            <div class="video-meta-text">
-                                <h3 id="video-title" class="video-title">Video Title</h3>
-                                <div class="meta-row">
-                                    <span class="meta-item author-tag"><i class="fa-solid fa-circle-user"></i> <span id="video-author">Channel Name</span></span>
-                                    <span class="meta-item"><i class="fa-solid fa-eye"></i> <span id="video-views">0 views</span></span>
-                                </div>
-                                <p id="video-desc" class="video-description hidden">Description snippet...</p>
-                            </div>
-                        </div>
-
-                        <!-- Right: Format Downloads -->
-                        <div class="download-formats-pane">
-                            <div class="tabs-container">
-                                <button class="tab-btn active" id="tab-video" onclick="switchTab('video')">
-                                    <i class="fa-solid fa-video"></i> Video
+                                <button class="platform-tab btn-ig" onclick="selectPlatform('instagram', this)">
+                                    <i class="fa-brands fa-instagram icon-platform"></i>
+                                    <span>Instagram</span>
                                 </button>
-                                <button class="tab-btn" id="tab-audio" onclick="switchTab('audio')">
-                                    <i class="fa-solid fa-music"></i> Audio
+                                <button class="platform-tab btn-tt" onclick="selectPlatform('tiktok', this)">
+                                    <i class="fa-brands fa-tiktok icon-platform"></i>
+                                    <span>TikTok</span>
+                                </button>
+                                <button class="platform-tab btn-fb" onclick="selectPlatform('facebook', this)">
+                                    <i class="fa-brands fa-facebook icon-platform"></i>
+                                    <span>Facebook</span>
+                                </button>
+                                <button class="platform-tab btn-uni" onclick="selectPlatform('universal', this)">
+                                    <i class="fa-solid fa-globe icon-platform"></i>
+                                    <span>Universal</span>
                                 </button>
                             </div>
 
-                            <!-- Tab Content: Video -->
-                            <div id="pane-video" class="tab-pane active">
-                                <p class="pane-help hidden"></p>
-                                <div id="video-formats-list" class="formats-list">
-                                    <!-- Dynamic formats inject -->
+                            <!-- Input Console -->
+                            <section class="card glass-card search-section" id="main-downloader-card">
+                                <div class="card-accent-glow"></div>
+                                <div class="header-card-row">
+                                    <h2 class="section-title">
+                                        <i class="fa-solid fa-terminal font-accent header-dynamic-icon"></i> 
+                                        <span id="downloader-card-title">Paste YouTube Link</span>
+                                    </h2>
+                                    <span class="active-badge" id="active-platform-badge">YouTube Mode</span>
                                 </div>
-                            </div>
-
-                            <!-- Tab Content: Audio -->
-                            <div id="pane-audio" class="tab-pane">
-                                <p class="pane-help hidden"></p>
-                                <div id="audio-formats-list" class="formats-list">
-                                    <!-- Dynamic formats inject -->
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Download Progress Overlay -->
-                <section id="progress-section" class="card glass-card progress-section hidden">
-                    <div class="progress-container">
-                        <div class="progress-header">
-                            <span class="progress-title"><i class="fa-solid fa-spinner fa-spin font-accent progress-spin-icon"></i> Processing</span>
-                            <span id="progress-filename" class="progress-filename">video-title.mp4</span>
-                        </div>
-                        <div class="progress-bar-wrapper">
-                            <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%"></div>
-                        </div>
-                        <div class="progress-meta">
-                            <span id="progress-percent" class="progress-percent">0%</span>
-                            <span id="progress-status" class="progress-status">Preparing background download task...</span>
-                        </div>
-                        <!-- Manual Click-to-Save Action Button -->
-                        <div id="progress-actions" class="progress-actions hidden">
-                            <a id="progress-download-btn" href="#" class="btn btn-success btn-dynamic-accent">
-                                <i class="fa-solid fa-circle-arrow-down"></i>
-                                <span>Save Video to Device</span>
-                            </a>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Free Virtual SMS Console -->
-                <section id="sms-section" class="card glass-card sms-section hidden">
-                    <div class="card-accent-glow"></div>
-                    
-                    <div class="sms-layout">
-                        <!-- Left Pane: Country and Number Selection -->
-                        <div class="sms-selector-pane">
-                            <h3 class="sms-pane-title"><i class="fa-solid fa-earth-americas"></i> Choose Country</h3>
-                            <div class="sms-search-box">
-                                <i class="fa-solid fa-magnifying-glass"></i>
-                                <input type="text" id="sms-country-search" placeholder="Search country..." oninput="filterCountries()">
-                            </div>
-                            <div class="sms-country-list" id="sms-countries-container">
-                                <!-- Loading placeholder -->
-                                <div class="sms-loading"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading countries...</div>
-                            </div>
-                            
-                            <div class="sms-number-box hidden" id="sms-numbers-box">
-                                <div class="sms-number-box-header">
-                                    <button class="btn-back" onclick="showCountryList()"><i class="fa-solid fa-arrow-left"></i> Countries</button>
-                                    <h3 class="sms-pane-title"><span id="active-country-flag"></span> <span id="active-country-name">Numbers</span></h3>
-                                </div>
-                                <div class="sms-number-list" id="sms-numbers-container">
-                                    <!-- Populated dynamically -->
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Right Pane: Inbox Messages Feed -->
-                        <div class="sms-inbox-pane">
-                            <div class="sms-inbox-placeholder" id="sms-inbox-placeholder">
-                                <i class="fa-solid fa-comment-sms"></i>
-                                <h4>Virtual SMS Console</h4>
-                                <p>Select a country and number on the left to display its live verification inbox.</p>
-                            </div>
-                            
-                            <div class="sms-inbox-content hidden" id="sms-inbox-content">
-                                <div class="sms-inbox-header">
-                                    <div class="sms-number-info">
-                                        <div class="sms-number-row">
-                                            <h2 id="active-sms-number">+1 000 000 0000</h2>
-                                            <button class="btn btn-secondary btn-sm btn-copy" onclick="copyActiveNumber()">
-                                                <i class="fa-solid fa-copy"></i> Copy
+                                <p class="section-desc hidden" id="downloader-card-desc">Enter URL to extract media files.</p>
+                                
+                                <form id="fetch-form" onsubmit="event.preventDefault(); handleFetch();">
+                                    <div class="input-group">
+                                        <div class="input-wrapper">
+                                            <i class="fa-brands fa-youtube input-icon" id="dynamic-input-icon"></i>
+                                            <input 
+                                                type="url" 
+                                                id="youtube-url" 
+                                                placeholder="Paste link here..." 
+                                                required
+                                                autocomplete="off"
+                                            >
+                                            <button type="button" id="clear-btn" class="clear-input-btn" title="Clear link">
+                                                <i class="fa-solid fa-xmark"></i>
                                             </button>
                                         </div>
-                                        <div class="sms-meta-badges">
-                                            <span class="sms-badge sms-live-badge"><span class="pulse-dot"></span> Live Inbox</span>
-                                            <span class="sms-badge sms-edu-badge"><i class="fa-solid fa-building-columns"></i> Educational Purpose Only</span>
+                                        <button type="submit" id="fetch-btn" class="btn btn-primary btn-dynamic-accent">
+                                            <span class="btn-text">Extract Link</span>
+                                            <span class="btn-loader hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+                                        </button>
+                                    </div>
+                                </form>
+
+                                <!-- Feedback Message -->
+                                <div id="status-message" class="status-msg hidden"></div>
+                            </section>
+
+                            <!-- Video Metadata & Format Download Panel -->
+                            <section id="results-section" class="card glass-card results-section hidden">
+                                <div class="video-details-grid">
+                                    <!-- Left: Video Preview & Info -->
+                                    <div class="video-preview-pane">
+                                        <div class="thumbnail-wrapper">
+                                            <div id="thumbnail-placeholder" class="thumb-placeholder">
+                                                <i class="fa-solid fa-circle-notch fa-spin"></i>
+                                            </div>
+                                            <img id="video-thumbnail" referrerpolicy="no-referrer" src="" alt="Video Thumbnail">
+                                            <span id="video-duration" class="badge-duration">0:00</span>
+                                        </div>
+                                        <div class="video-meta-text">
+                                            <h3 id="video-title" class="video-title">Video Title</h3>
+                                            <div class="meta-row">
+                                                <span class="meta-item author-tag"><i class="fa-solid fa-circle-user"></i> <span id="video-author">Channel Name</span></span>
+                                                <span class="meta-item"><i class="fa-solid fa-eye"></i> <span id="video-views">0 views</span></span>
+                                            </div>
+                                            <p id="video-desc" class="video-description hidden">Description snippet...</p>
                                         </div>
                                     </div>
-                                    <button class="btn btn-primary btn-sm btn-refresh" id="sms-refresh-btn" onclick="refreshInbox()">
-                                        <i class="fa-solid fa-rotate"></i> Refresh
+
+                                    <!-- Right: Format Downloads -->
+                                    <div class="download-formats-pane">
+                                        <div class="tabs-container">
+                                            <button class="tab-btn active" id="tab-video" onclick="switchTab('video')">
+                                                <i class="fa-solid fa-video"></i> Video
+                                            </button>
+                                            <button class="tab-btn" id="tab-audio" onclick="switchTab('audio')">
+                                                <i class="fa-solid fa-music"></i> Audio
+                                            </button>
+                                        </div>
+
+                                        <!-- Tab Content: Video -->
+                                        <div id="pane-video" class="tab-pane active">
+                                            <p class="pane-help hidden"></p>
+                                            <div id="video-formats-list" class="formats-list">
+                                                <!-- Dynamic formats inject -->
+                                            </div>
+                                        </div>
+
+                                        <!-- Tab Content: Audio -->
+                                        <div id="pane-audio" class="tab-pane">
+                                            <p class="pane-help hidden"></p>
+                                            <div id="audio-formats-list" class="formats-list">
+                                                <!-- Dynamic formats inject -->
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <!-- Download Progress Overlay -->
+                            <section id="progress-section" class="card glass-card progress-section hidden">
+                                <div class="progress-container">
+                                    <div class="progress-header">
+                                        <span class="progress-title"><i class="fa-solid fa-spinner fa-spin font-accent progress-spin-icon"></i> Processing</span>
+                                        <span id="progress-filename" class="progress-filename">video-title.mp4</span>
+                                    </div>
+                                    <div class="progress-bar-wrapper">
+                                        <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%"></div>
+                                    </div>
+                                    <div class="progress-meta">
+                                        <span id="progress-percent" class="progress-percent">0%</span>
+                                        <span id="progress-status" class="progress-status">Preparing background download task...</span>
+                                    </div>
+                                    <!-- Manual Click-to-Save Action Button -->
+                                    <div id="progress-actions" class="progress-actions hidden">
+                                        <a id="progress-download-btn" href="#" class="btn btn-success btn-dynamic-accent">
+                                            <i class="fa-solid fa-circle-arrow-down"></i>
+                                            <span>Save Video to Device</span>
+                                        </a>
+                                    </div>
+                                </div>
+                            </section>
+                        </div>
+
+                        <!-- Right Side: Sidebar Panel -->
+                        <div class="dashboard-sidebar">
+                            <!-- API Node Pool Panel -->
+                            <section class="card glass-card node-pool-section">
+                                <h3><i class="fa-solid fa-network-wired font-accent"></i> Core Decryptors</h3>
+                                <div class="node-list">
+                                    <div class="node-item">
+                                        <div class="node-status">
+                                            <span class="node-dot online"></span>
+                                            <span class="node-name">Node-Alpha (Direct)</span>
+                                        </div>
+                                        <span class="node-ping">8ms</span>
+                                    </div>
+                                    <div class="node-item">
+                                        <div class="node-status">
+                                            <span class="node-dot online"></span>
+                                            <span class="node-name">Node-Beta (Proxy)</span>
+                                        </div>
+                                        <span class="node-ping">15ms</span>
+                                    </div>
+                                    <div class="node-item">
+                                        <div class="node-status">
+                                            <span class="node-dot online"></span>
+                                            <span class="node-name">Node-Gamma (Cobalt)</span>
+                                        </div>
+                                        <span class="node-ping">12ms</span>
+                                    </div>
+                                    <div class="node-item text-muted-small">
+                                        <span class="node-bypass-txt"><i class="fa-solid fa-shield-halved"></i> Cloud Bypass Active</span>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <!-- Recent Downloads / History Dashboard -->
+                            <section class="card glass-card history-section">
+                                <div class="history-title-row">
+                                    <h3><i class="fa-solid fa-clock-rotate-left font-accent"></i> Download Log</h3>
+                                    <button type="button" id="clear-history-btn" class="btn btn-secondary btn-sm hidden" onclick="clearHistory()">
+                                        <i class="fa-solid fa-trash-can"></i> Clear
+                                    </button>
+                                </div>
+                                <div id="history-container" class="history-list">
+                                    <div class="history-empty">
+                                        <i class="fa-solid fa-search history-empty-icon"></i>
+                                        <p>History is empty.</p>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <!-- SaaS Features Panel -->
+                            <section class="card glass-card info-features-section">
+                                <h3><i class="fa-solid fa-sliders font-accent"></i> License & limits</h3>
+                                <div class="features-grid">
+                                    <div class="feature-badge">
+                                        <span class="f-title">Plan</span>
+                                        <span class="f-val">Enterprise</span>
+                                    </div>
+                                    <div class="feature-badge">
+                                        <span class="f-title">Rate Limit</span>
+                                        <span class="f-val">Unlimited</span>
+                                    </div>
+                                    <div class="feature-badge">
+                                        <span class="f-title">Ad-Free</span>
+                                        <span class="f-val">Yes</span>
+                                    </div>
+                                    <div class="feature-badge">
+                                        <span class="f-title">Resolutions</span>
+                                        <span class="f-val">Up to 4K</span>
+                                    </div>
+                                </div>
+                            </section>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Panel 2: Temp Numbers (SMS Receiver) -->
+                <div id="panel-sms" class="main-panel">
+                    <section class="card glass-card sms-section">
+                        <div class="card-accent-glow"></div>
+                        <div class="sms-layout">
+                            <!-- Left Pane: Country and Number Selection -->
+                            <div class="sms-selector-pane">
+                                <h3 class="sms-pane-title"><i class="fa-solid fa-earth-americas"></i> Choose Country</h3>
+                                <div class="sms-search-box">
+                                    <i class="fa-solid fa-magnifying-glass"></i>
+                                    <input type="text" id="sms-country-search" placeholder="Search country..." oninput="filterCountries()">
+                                </div>
+                                <div class="sms-country-list" id="sms-countries-container">
+                                    <div class="sms-loading"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading countries...</div>
+                                </div>
+                                
+                                <div class="sms-number-box hidden" id="sms-numbers-box">
+                                    <div class="sms-number-box-header">
+                                        <button class="btn-back" onclick="showCountryList()"><i class="fa-solid fa-arrow-left"></i> Countries</button>
+                                        <h3 class="sms-pane-title"><span id="active-country-flag"></span> <span id="active-country-name">Numbers</span></h3>
+                                    </div>
+                                    <div class="sms-number-list" id="sms-numbers-container"></div>
+                                </div>
+                            </div>
+                            
+                            <!-- Right Pane: Inbox Messages Feed -->
+                            <div class="sms-inbox-pane">
+                                <div class="sms-inbox-placeholder" id="sms-inbox-placeholder">
+                                    <i class="fa-solid fa-comment-sms"></i>
+                                    <h4>Virtual SMS Console</h4>
+                                    <p>Select a country and number on the left to display its live verification inbox.</p>
+                                </div>
+                                
+                                <div class="sms-inbox-content hidden" id="sms-inbox-content">
+                                    <div class="sms-inbox-header">
+                                        <div class="sms-number-info">
+                                            <div class="sms-number-row">
+                                                <h2 id="active-sms-number">+1 000 000 0000</h2>
+                                                <button class="btn btn-secondary btn-sm btn-copy" onclick="copyActiveNumber()">
+                                                    <i class="fa-solid fa-copy"></i> Copy
+                                                </button>
+                                            </div>
+                                            <div class="sms-meta-badges">
+                                                <span class="sms-badge sms-live-badge"><span class="pulse-dot"></span> Live Inbox</span>
+                                                <span class="sms-badge sms-edu-badge"><i class="fa-solid fa-building-columns"></i> Educational Purpose Only</span>
+                                            </div>
+                                        </div>
+                                        <button class="btn btn-primary btn-sm btn-refresh" id="sms-refresh-btn" onclick="refreshInbox()">
+                                            <i class="fa-solid fa-rotate"></i> Refresh
+                                        </button>
+                                    </div>
+                                    
+                                    <div class="sms-messages-container" id="sms-messages-container"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- Panel 3: Temp Mail (Disposable Email Terminal) -->
+                <div id="panel-mail" class="main-panel">
+                    <section class="card glass-card mail-section">
+                        <div class="card-accent-glow"></div>
+                        <div class="mail-layout">
+                            <!-- Left Pane: Mail Node Ingest & Account Manager -->
+                            <div class="mail-selector-pane">
+                                <div class="mail-pane-header">
+                                    <h3 class="mail-pane-title"><i class="fa-solid fa-network-wired"></i> Mail Stream</h3>
+                                    <div class="mail-polling-status">
+                                        <span class="mail-polling-dot"></span>
+                                        <span class="mail-polling-label">Active</span>
+                                    </div>
+                                </div>
+                                
+                                <!-- Active Email Address pill block -->
+                                <div class="mail-active-pill" id="mail-active-pill-wrapper">
+                                    <span id="active-email-address-text">Generating address...</span>
+                                    <button class="btn btn-secondary btn-sm btn-copy" id="mail-copy-address-btn" onclick="copyActiveEmailAddress()">
+                                        <i class="fa-solid fa-copy"></i>
                                     </button>
                                 </div>
                                 
-                                <div class="sms-messages-container" id="sms-messages-container">
-                                    <!-- Messages inject here -->
+                                <!-- Address Custom Generator Console -->
+                                <div class="mail-generator-box">
+                                    <div class="mail-input-row">
+                                        <input type="text" id="mail-custom-prefix" placeholder="Prefix (optional)">
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="randomizeEmailPrefix()" title="Randomize Prefix">
+                                            <i class="fa-solid fa-shuffle"></i>
+                                        </button>
+                                    </div>
+                                    <div class="mail-select-row">
+                                        <select id="mail-domain-select">
+                                            <option value="1secmail.com">1secmail.com</option>
+                                            <option value="1secmail.org">1secmail.org</option>
+                                            <option value="1secmail.net">1secmail.net</option>
+                                        </select>
+                                        <button type="button" class="btn btn-primary btn-sm" onclick="spawnNewEmailAddress()">
+                                            <i class="fa-solid fa-plus"></i> Generate
+                                        </button>
+                                    </div>
+                                    <div class="mail-history-header-row">
+                                        <h4>Active Nodes</h4>
+                                        <span id="mail-node-count-badge" class="mail-node-badge">1 Node</span>
+                                    </div>
+                                    <div class="mail-nodes-list" id="mail-nodes-list-container">
+                                        <!-- Dynamically generated nodes -->
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Middle/Right Pane: Email Inbox & Viewport -->
+                            <div class="mail-inbox-pane">
+                                <!-- Inbox message list column -->
+                                <div class="mail-inbox-column">
+                                    <div class="mail-inbox-header-row">
+                                        <h3>Incoming Stream</h3>
+                                        <div class="mail-header-buttons">
+                                            <button class="btn btn-secondary btn-sm" onclick="openMockMailerDrawer()" title="Inject Simulator Packet">
+                                                <i class="fa-solid fa-terminal"></i> Inject
+                                            </button>
+                                            <button class="btn btn-secondary btn-sm" onclick="refreshEmailInbox()" title="Force Sync">
+                                                <i class="fa-solid fa-rotate"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="mail-inbox-list" id="mail-inbox-list-container">
+                                        <div class="mail-empty-state">
+                                            <i class="fa-solid fa-envelope-open-text"></i>
+                                            <p>No messages received yet. Waiting for incoming verifications...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Mail content decryption viewer column -->
+                                <div class="mail-viewer-column" id="mail-viewer-container">
+                                    <div class="mail-viewer-placeholder" id="mail-viewer-placeholder">
+                                        <i class="fa-solid fa-lock"></i>
+                                        <h4>Decryption STANDBY</h4>
+                                        <p>Select an incoming verification email from the stream to decrypt and read contents.</p>
+                                    </div>
+                                    
+                                    <div class="mail-viewer-content hidden" id="mail-viewer-content">
+                                        <!-- OTP banner widget -->
+                                        <div class="mail-otp-banner hidden" id="mail-otp-banner">
+                                            <div class="otp-banner-icon"><i class="fa-solid fa-key"></i></div>
+                                            <div class="otp-banner-info">
+                                                <h5>// OTP AUTO-EXTRACTED</h5>
+                                                <p>Credentials parsed successfully.</p>
+                                            </div>
+                                            <div class="otp-code-box">
+                                                <span id="mail-otp-code-value">000000</span>
+                                                <button class="btn btn-primary btn-sm btn-otp-zap" id="mail-otp-copy-btn">
+                                                    <i class="fa-solid fa-bolt"></i> COPY
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="mail-viewer-header">
+                                            <h3 id="mail-msg-subject">Email Subject</h3>
+                                            <span id="mail-msg-time" class="mail-time-badge">00:00:00</span>
+                                        </div>
+                                        
+                                        <div class="mail-viewer-sender">
+                                            <div class="mail-sender-avatar" id="mail-sender-avatar-letter">S</div>
+                                            <div class="mail-viewer-sender-meta">
+                                                <span class="name" id="mail-msg-sender-name">Sender Name</span>
+                                                <span class="addr" id="mail-msg-sender-address">sender@domain.com</span>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="mail-viewer-tabs">
+                                            <button class="mail-tab-btn active" id="mail-view-tab-rich" onclick="switchMailViewTab('rich')">HTML Render</button>
+                                            <button class="mail-tab-btn" id="mail-view-tab-plain" onclick="switchMailViewTab('plain')">Plain Decrypt</button>
+                                        </div>
+                                        
+                                        <div class="mail-viewer-body">
+                                            <div class="mail-body-pane active" id="mail-body-pane-rich">
+                                                <iframe id="mail-html-frame" sandbox="allow-same-origin allow-popups" title="HTML MIME Body"></iframe>
+                                            </div>
+                                            <div class="mail-body-pane" id="mail-body-pane-plain">
+                                                <pre id="mail-text-plain-box"></pre>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </section>
+                    </section>
+                </div>
             </div>
 
-            <!-- Right Side: Sidebar Panel -->
-            <div class="dashboard-sidebar">
-                <!-- API Node Pool Panel -->
-                <section class="card glass-card node-pool-section">
-                    <h3><i class="fa-solid fa-network-wired font-accent"></i> Core Decryptors</h3>
-                    <div class="node-list">
-                        <div class="node-item">
-                            <div class="node-status">
-                                <span class="node-dot online"></span>
-                                <span class="node-name">Node-Alpha (Direct)</span>
-                            </div>
-                            <span class="node-ping">8ms</span>
-                        </div>
-                        <div class="node-item">
-                            <div class="node-status">
-                                <span class="node-dot online"></span>
-                                <span class="node-name">Node-Beta (Proxy)</span>
-                            </div>
-                            <span class="node-ping">15ms</span>
-                        </div>
-                        <div class="node-item">
-                            <div class="node-status">
-                                <span class="node-dot online"></span>
-                                <span class="node-name">Node-Gamma (Cobalt)</span>
-                            </div>
-                            <span class="node-ping">12ms</span>
-                        </div>
-                        <div class="node-item text-muted-small">
-                            <span class="node-bypass-txt"><i class="fa-solid fa-shield-halved"></i> Cloud Bypass Active</span>
-                        </div>
-                    </div>
-                </section>
+            <!-- Footer -->
+            <footer class="app-footer">
+                <p>&copy; 2026 TubeFlow. Premium Glassmorphic Suite.</p>
+            </footer>
+        </main>
+    </div>
 
-                <!-- Recent Downloads / History Dashboard -->
-                <section class="card glass-card history-section">
-                    <div class="history-title-row">
-                        <h3><i class="fa-solid fa-clock-rotate-left font-accent"></i> Download Log</h3>
-                        <button type="button" id="clear-history-btn" class="btn btn-secondary btn-sm hidden" onclick="clearHistory()">
-                            <i class="fa-solid fa-trash-can"></i> Clear
-                        </button>
-                    </div>
-                    <div id="history-container" class="history-list">
-                        <div class="history-empty">
-                            <i class="fa-solid fa-search history-empty-icon"></i>
-                            <p>History is empty.</p>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- SaaS Features Panel -->
-                <section class="card glass-card info-features-section">
-                    <h3><i class="fa-solid fa-sliders font-accent"></i> License & limits</h3>
-                    <div class="features-grid">
-                        <div class="feature-badge">
-                            <span class="f-title">Plan</span>
-                            <span class="f-val">Enterprise</span>
-                        </div>
-                        <div class="feature-badge">
-                            <span class="f-title">Rate Limit</span>
-                            <span class="f-val">Unlimited</span>
-                        </div>
-                        <div class="feature-badge">
-                            <span class="f-title">Ad-Free</span>
-                            <span class="f-val">Yes</span>
-                        </div>
-                        <div class="feature-badge">
-                            <span class="f-title">Resolutions</span>
-                            <span class="f-val">Up to 4K</span>
-                        </div>
-                    </div>
-                </section>
+    <!-- SMTP MOCK MAIL INJECTOR DRAWER OVERLAY -->
+    <div class="mail-drawer-overlay hidden" id="mail-drawer-overlay" onclick="closeMockMailerDrawer()"></div>
+    <aside class="mail-drawer hidden" id="mail-drawer">
+        <div class="drawer-header">
+            <h3><i class="fa-solid fa-terminal font-accent"></i> Packet Simulator</h3>
+            <button class="btn-close-drawer" onclick="closeMockMailerDrawer()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="drawer-content">
+            <p class="drawer-desc">Inject custom OTP emails into your active mailbox to verify and test the credentials extractor immediately.</p>
+            
+            <div class="preset-triggers">
+                <label>Select Template</label>
+                <div class="preset-buttons">
+                    <button class="btn btn-secondary btn-sm" type="button" onclick="loadMockEmailPreset('google')">Google Auth</button>
+                    <button class="btn btn-secondary btn-sm" type="button" onclick="loadMockEmailPreset('github')">GitHub Device</button>
+                    <button class="btn btn-secondary btn-sm" type="button" onclick="loadMockEmailPreset('netflix')">Netflix OTP</button>
+                </div>
             </div>
             
+            <form id="mock-mailer-form" onsubmit="event.preventDefault(); injectMockMail();">
+                <div class="form-group">
+                    <label for="mock-mail-from">From (Source Address)</label>
+                    <input type="email" id="mock-mail-from" required placeholder="security@accounts.google.com">
+                </div>
+                <div class="form-group">
+                    <label for="mock-mail-sender-name">Transmitter Signature</label>
+                    <input type="text" id="mock-mail-sender-name" placeholder="Google Accounts">
+                </div>
+                <div class="form-group">
+                    <label for="mock-mail-to">To (Active Node)</label>
+                    <input type="email" id="mock-mail-to" required readonly class="readonly-input">
+                </div>
+                <div class="form-group">
+                    <label for="mock-mail-subject">Header Subject</label>
+                    <input type="text" id="mock-mail-subject" required placeholder="128472 is your Google verification code">
+                </div>
+                <div class="form-group">
+                    <label for="mock-mail-body">Packet Body</label>
+                    <textarea id="mock-mail-body" required rows="6" placeholder="Body HTML content containing the code..."></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Inject Packet to Logs</button>
+            </form>
         </div>
-
-        <!-- Footer -->
-        <footer class="app-footer">
-            <p>&copy; 2026 TubeFlow. Premium Glassmorphic Suite.</p>
-            <p class="disclaimer hidden"></p>
-        </footer>
-    </div>
+    </aside>
 
     <!-- Hidden iframe for background downloading -->
     <iframe id="download-iframe" style="display: none;"></iframe>
