@@ -917,8 +917,6 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     const downloadFilename = `${title.replace(/[\\/*?"<>|]/g, '')}_${qualityLabel}.${ext}`;
     const isAudio = formatType === 'audio' || qualityLabel === 'Audio' || ext === 'mp3' || ext === 'm4a';
 
-    const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
-
     // Helper: trigger direct browser download
     function triggerBrowserDownload(downloadUrl, filename) {
         const link = document.createElement('a');
@@ -929,49 +927,66 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
         document.body.removeChild(link);
     }
 
-    if (isYouTube) {
-        // Show progress UI section
-        const progressFill = document.getElementById('progress-bar-fill');
-        const progressPercent = document.getElementById('progress-percent');
-        const progressStatus = document.getElementById('progress-status');
-        const progressFilename = document.getElementById('progress-filename');
+    // Decode the format ID to check if it's already a direct download URL
+    let sourceUrl = null;
+    try {
+        const decoded = atob(formatId);
+        if (decoded.includes('|')) sourceUrl = decoded.split('|')[0];
+    } catch (_) {}
 
-        showStatus('Processing download... Please wait.', 'loading');
-        progressSection.classList.remove('hidden');
-        progressSection.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        progressFilename.textContent = downloadFilename;
-        progressFill.style.width = '20%';
-        progressFill.classList.add('pulsing-fill');
-        progressPercent.textContent = 'Connecting';
-        toggleDownloadButtons(false);
+    // Check if the source URL is already a direct stream URL (non-Google, e.g. Invidious proxy or direct CDN link)
+    const isAlreadyStreamUrl = sourceUrl && (
+        !sourceUrl.includes('googlevideo.com') &&
+        !sourceUrl.includes('youtube.com') &&
+        !sourceUrl.includes('ytimg.com') &&
+        sourceUrl.startsWith('http')
+    );
 
-        progressStatus.innerHTML = `<i class="fa-solid fa-bolt fa-spin font-accent"></i> Bypassing YouTube blockages via client-side node (no server load)...`;
-
-        try {
-            // Attempt high-speed client-side Cobalt resolution directly in the browser!
-            // This runs on the client's residential IP → 100% immune to server IP blocks!
-            const res = await getCobaltMergedLink(url, qualityLabel, isAudio);
-            if (res && res.url) {
-                progressFill.style.width = '100%';
-                progressFill.classList.remove('pulsing-fill');
-                progressPercent.textContent = '100%';
-                progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Bypass successful! Starting high-speed download...</span>`;
-                
-                triggerBrowserDownload(res.url, downloadFilename);
-                showStatus('Download started successfully!', 'success');
-                toggleDownloadButtons(true);
-                setTimeout(() => progressSection.classList.add('hidden'), 5000);
-                return;
-            }
-        } catch (err) {
-            console.warn("Client-side Cobalt bypass failed. Falling back to server-side pipeline...", err);
-        }
-
-        // Fallback: If client-side bypass fails, route to server-side pipeline
-        progressStatus.innerHTML = `<i class="fa-solid fa-server fa-spin font-accent"></i> Client bypass busy. Routing to server-side pipeline...`;
+    if (isAlreadyStreamUrl) {
+        showStatus('Starting instant direct download...', 'success');
+        triggerBrowserDownload(sourceUrl, downloadFilename);
+        return;
     }
 
-    // Route to server-side download manager
+    // Show progress UI section
+    const progressFill = document.getElementById('progress-bar-fill');
+    const progressPercent = document.getElementById('progress-percent');
+    const progressStatus = document.getElementById('progress-status');
+    const progressFilename = document.getElementById('progress-filename');
+
+    showStatus('Processing download... Please wait.', 'loading');
+    progressSection.classList.remove('hidden');
+    progressSection.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    progressFilename.textContent = downloadFilename;
+    progressFill.style.width = '20%';
+    progressFill.classList.add('pulsing-fill');
+    progressPercent.textContent = 'Connecting';
+    toggleDownloadButtons(false);
+
+    progressStatus.innerHTML = `<i class="fa-solid fa-bolt fa-spin font-accent"></i> Bypassing blockages via client-side download node...`;
+
+    try {
+        // Attempt high-speed client-side Cobalt resolution directly in the browser!
+        // This runs on the client's residential IP → 100% immune to server IP blocks!
+        const res = await getCobaltMergedLink(url, qualityLabel, isAudio);
+        if (res && res.url) {
+            progressFill.style.width = '100%';
+            progressFill.classList.remove('pulsing-fill');
+            progressPercent.textContent = '100%';
+            progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Bypass successful! Starting high-speed download...</span>`;
+            
+            triggerBrowserDownload(res.url, downloadFilename);
+            showStatus('Download started successfully!', 'success');
+            toggleDownloadButtons(true);
+            setTimeout(() => progressSection.classList.add('hidden'), 5000);
+            return;
+        }
+    } catch (err) {
+        console.warn("Client-side Cobalt bypass failed. Falling back to server-side pipeline...", err);
+    }
+
+    // Fallback: If client-side bypass fails, route to server-side pipeline
+    progressStatus.innerHTML = `<i class="fa-solid fa-server fa-spin font-accent"></i> Client bypass busy. Routing to server-side pipeline...`;
     startServerSideDownload(formatId, ext, qualityLabel, formatType, downloadFilename);
 }
 
