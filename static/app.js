@@ -13,6 +13,10 @@ function getProxiedThumbnail(thumbnailUrl) {
     if (thumbnailUrl.includes('youtube.com') || thumbnailUrl.includes('youtu.be') || thumbnailUrl.includes('ytimg.com')) {
         return thumbnailUrl;
     }
+    // If Flask backend is available, use our own high-speed server image proxy!
+    if (isServerSupported()) {
+        return `/api/proxy-image?url=${encodeURIComponent(thumbnailUrl)}`;
+    }
     return `https://corsproxy.io/?${encodeURIComponent(thumbnailUrl)}`;
 }
 
@@ -759,12 +763,35 @@ async function fetchClientSideMetadata(url) {
             if (url.includes('pin.it') || url.includes('/sent/')) {
                 const expanded = await expandPinterestUrl(url);
                 targetUrl = cleanPinterestUrl(expanded);
+                
+                // If redirect expansion failed to retrieve the pin ID, fallback to querying Cobalt to extract the ID from the filename!
+                if (!targetUrl.includes('/pin/')) {
+                    try {
+                        const cobaltRes = await getCobaltMergedLink(url, '720p', false);
+                        if (cobaltRes && cobaltRes.filename) {
+                            const match = cobaltRes.filename.match(/pinterest_(\d+)/);
+                            if (match && match[1]) {
+                                targetUrl = `https://www.pinterest.com/pin/${match[1]}/`;
+                            }
+                        }
+                    } catch (e) {
+                        console.warn("Cobalt fallback ID extraction failed:", e);
+                    }
+                }
             }
             oEmbedUrl = `https://corsproxy.io/?https://www.pinterest.com/oembed.json?url=${encodeURIComponent(targetUrl)}`;
         }
 
         if (oEmbedUrl) {
-            const res = await fetch(oEmbedUrl);
+            let fetchUrl = oEmbedUrl;
+            if (isServerSupported()) {
+                let rawOEmbedUrl = oEmbedUrl;
+                if (oEmbedUrl.includes('corsproxy.io/?')) {
+                    rawOEmbedUrl = decodeURIComponent(oEmbedUrl.split('corsproxy.io/?')[1]);
+                }
+                fetchUrl = `/api/proxy-oembed?url=${encodeURIComponent(rawOEmbedUrl)}`;
+            }
+            const res = await fetch(fetchUrl);
             if (res.ok) {
                 const json = await res.json();
                 title = json.title || title;
@@ -1417,16 +1444,13 @@ function startServerSideDownload(formatId, ext, qualityLabel, formatTypeOrIsMerg
                             // Show save button in the UI
                             showDownloadSaveButton(downloadUrl, downloadFilename);
                             
-                            // Trigger auto-download in current window to bypass popup blocker
-                            try {
-                                window.location.href = downloadUrl;
-                            } catch (e) {
-                                const link = document.createElement('a');
-                                link.href = downloadUrl;
-                                document.body.appendChild(link);
-                                link.click();
-                                document.body.removeChild(link);
-                            }
+                            // Trigger auto-download using standard anchor tag click (avoid window.location.href to support sandboxed iframes)
+                            const link = document.createElement('a');
+                            link.href = downloadUrl;
+                            link.download = downloadFilename;
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
                             
                             showStatus('Download completed successfully!', 'success');
                             toggleDownloadButtons(true);

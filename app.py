@@ -577,6 +577,38 @@ def cleanup_old_tasks():
 cleanup_thread = threading.Thread(target=cleanup_old_tasks, daemon=True)
 cleanup_thread.start()
 
+@app.route('/api/proxy-image')
+def proxy_image():
+    url = request.args.get('url', '').strip()
+    if not url:
+        return "URL is required", 400
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': 'https://www.pinterest.com/'
+        }
+        r = requests.get(url, headers=headers, timeout=12)
+        r.raise_for_status()
+        content_type = r.headers.get('Content-Type', 'image/jpeg')
+        return Response(r.content, content_type=content_type)
+    except Exception as e:
+        return f"Error proxying image: {str(e)}", 500
+
+@app.route('/api/proxy-oembed')
+def proxy_oembed():
+    url = request.args.get('url', '').strip()
+    if not url:
+        return jsonify({'error': 'URL is required'}), 400
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        r = requests.get(url, headers=headers, timeout=12)
+        r.raise_for_status()
+        return jsonify(r.json())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/debug-logs')
 def get_debug_logs():
     try:
