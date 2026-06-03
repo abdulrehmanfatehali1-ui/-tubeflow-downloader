@@ -582,6 +582,14 @@ def proxy_image():
     url = request.args.get('url', '').strip()
     if not url:
         return "URL is required", 400
+    
+    download = request.args.get('download', '')
+    filename = request.args.get('filename', 'thumbnail.jpg').strip()
+    # clean filename
+    filename = "".join(c for c in filename if c.isalnum() or c in (' ', '_', '-', '.', '(', ')')).strip()
+    if not filename:
+        filename = 'thumbnail.jpg'
+        
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -590,7 +598,14 @@ def proxy_image():
         r = requests.get(url, headers=headers, timeout=12)
         r.raise_for_status()
         content_type = r.headers.get('Content-Type', 'image/jpeg')
-        return Response(r.content, content_type=content_type)
+        
+        resp_headers = {
+            'Access-Control-Allow-Origin': '*'
+        }
+        if download == 'true' or download == '1':
+            resp_headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+            
+        return Response(r.content, content_type=content_type, headers=resp_headers)
     except Exception as e:
         return f"Error proxying image: {str(e)}", 500
 

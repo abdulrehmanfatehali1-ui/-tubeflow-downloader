@@ -28,6 +28,193 @@ function getProxiedThumbnail(thumbnailUrl) {
     return `https://corsproxy.io/?${encodeURIComponent(thumbnailUrl)}`;
 }
 
+// Helper: load thumbnail with sequential robust fallbacks so it never fails
+function loadThumbnailWithFallbacks(imgEl, placeholderEl, video) {
+    if (!imgEl) return;
+    
+    // Ensure we start with placeholder loading indicator
+    if (placeholderEl) {
+        placeholderEl.style.display = 'flex';
+        placeholderEl.className = 'thumb-placeholder';
+        placeholderEl.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+    }
+    imgEl.style.display = 'none';
+    
+    const fallbacks = [];
+    
+    // Add primary thumbnail source if available
+    if (video.thumbnail && video.thumbnail.trim() !== '') {
+        const thumb = video.thumbnail.trim();
+        
+        // 1. Backend proxy (if server is supported)
+        if (isServerSupported()) {
+            fallbacks.push(`${API_BASE_URL}/api/proxy-image?url=${encodeURIComponent(thumb)}`);
+        }
+        
+        // 2. High-speed Image Cache Proxy (weserv.nl)
+        const cleanThumbUrl = thumb.replace(/^https?:\/\//, '');
+        fallbacks.push(`https://images.weserv.nl/?url=${encodeURIComponent(cleanThumbUrl)}`);
+        
+        // 3. Public CORS proxy 1 (corsproxy.io)
+        fallbacks.push(`https://corsproxy.io/?${encodeURIComponent(thumb)}`);
+        
+        // 4. Public CORS proxy 2 (allorigins.win)
+        fallbacks.push(`https://api.allorigins.win/raw?url=${encodeURIComponent(thumb)}`);
+        
+        // 5. Direct URL
+        fallbacks.push(thumb);
+    }
+    
+    // Extract video ID for YouTube platform specific fallbacks
+    let ytId = null;
+    if (video.url) {
+        const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+        const match = video.url.match(regExp);
+        if (match && match[2].length === 11) {
+            ytId = match[2];
+        }
+    }
+    
+    if (ytId) {
+        const ytImages = [
+            `https://img.youtube.com/vi/${ytId}/maxresdefault.jpg`,
+            `https://img.youtube.com/vi/${ytId}/sddefault.jpg`,
+            `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`,
+            `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`
+        ];
+        
+        for (const ytImg of ytImages) {
+            // Push both proxied and direct versions of youtube thumbnails
+            if (isServerSupported()) {
+                fallbacks.push(`${API_BASE_URL}/api/proxy-image?url=${encodeURIComponent(ytImg)}`);
+            }
+            fallbacks.push(`https://images.weserv.nl/?url=${encodeURIComponent(ytImg.replace(/^https?:\/\//, ''))}`);
+            fallbacks.push(ytImg);
+        }
+    }
+    
+    // If we have absolutely no fallbacks, show the platform placeholder immediately
+    if (fallbacks.length === 0) {
+        showThumbnailPlaceholder();
+        return;
+    }
+    
+    let currentIndex = 0;
+    
+    // Clean up function to run on load/error completion
+    function cleanup() {
+        imgEl.onload = null;
+        imgEl.onerror = null;
+    }
+    
+    imgEl.onload = function() {
+        cleanup();
+        if (placeholderEl) placeholderEl.style.display = 'none';
+        imgEl.style.display = 'block';
+    };
+    
+    imgEl.onerror = function() {
+        currentIndex++;
+        if (currentIndex < fallbacks.length) {
+            console.log(`Thumbnail load failed for index ${currentIndex - 1}, trying fallback: ${fallbacks[currentIndex]}`);
+            imgEl.src = fallbacks[currentIndex];
+        } else {
+            cleanup();
+            console.warn("All thumbnail fallbacks failed, showing platform placeholder.");
+            showThumbnailPlaceholder();
+        }
+    };
+    
+    // Trigger initial load
+    imgEl.src = fallbacks[currentIndex];
+}
+
+// Download the loaded thumbnail image
+async function downloadThumbnail() {
+    if (!currentVideo || !currentVideo.thumbnail) {
+        showStatus('No thumbnail available to download.', 'error');
+        return;
+    }
+    
+    const title = currentVideo.title || 'video';
+    const cleanTitle = title.replace(/[\\/*?\"<>|]/g, '_').substring(0, 100);
+    const filename = `TubeFlow_Thumbnail_${cleanTitle}.jpg`;
+    
+    // Track loading state on the button
+    const btn = document.getElementById('download-thumbnail-btn');
+    if (!btn) return;
+    
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Downloading...';
+    
+    // We try multiple ways to download:
+    // Method 1: Flask backend proxy (if supported) with direct download=1 parameter
+    if (isServerSupported()) {
+        try {
+            const dlUrl = `${API_BASE_URL}/api/proxy-image?url=${encodeURIComponent(currentVideo.thumbnail)}&download=1&filename=${encodeURIComponent(filename)}`;
+            const link = document.createElement('a');
+            link.href = dlUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+            return;
+        } catch (e) {
+            console.error('Backend download failed, trying client side...', e);
+        }
+    }
+    
+    // Method 2: Client-side fetch with fallback proxies, convert to Blob, and download
+    const proxyChain = [
+        `https://images.weserv.nl/?url=${encodeURIComponent(currentVideo.thumbnail.replace(/^https?:\/\//, ''))}`,
+        `https://corsproxy.io/?${encodeURIComponent(currentVideo.thumbnail)}`,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(currentVideo.thumbnail)}`,
+        currentVideo.thumbnail // direct url as last resort
+    ];
+    
+    let downloaded = false;
+    for (const url of proxyChain) {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) continue;
+            const blob = await response.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            // Clean up blob URL
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+            downloaded = true;
+            break;
+        } catch (err) {
+            console.warn(`Failed downloading thumbnail using proxy: ${url}`, err);
+        }
+    }
+    
+    if (!downloaded) {
+        // Fallback method 3: Direct window open as absolute last resort
+        try {
+            window.open(currentVideo.thumbnail, '_blank');
+            downloaded = true;
+        } catch (err) {
+            showStatus('Could not download thumbnail automatically. Right-click the image to save it.', 'error');
+        }
+    }
+    
+    btn.disabled = false;
+    btn.innerHTML = origHtml;
+}
+
+
 // Helper: fetch Blob with progress tracking
 async function fetchWithProgress(url, onProgress) {
     const response = await fetch(url);
@@ -964,12 +1151,8 @@ function displayResults(video) {
     }
     if (videoThumbnail) videoThumbnail.style.display = 'none';
 
-    // Fill basic metadata (removed Unsplash fallback to trigger the platform gradient error placeholder instead)
-    if (video.thumbnail && video.thumbnail !== '') {
-        document.getElementById('video-thumbnail').src = getProxiedThumbnail(video.thumbnail);
-    } else {
-        showThumbnailPlaceholder();
-    }
+    // Setup and load thumbnail with fallback sources
+    loadThumbnailWithFallbacks(videoThumbnail, thumbnailPlaceholder, video);
     
     // Manage aspect-ratio layout and hide duration badge if duration is unknown (e.g. some live streams/FB reels)
     const durationBadge = document.getElementById('video-duration');

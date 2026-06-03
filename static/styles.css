@@ -585,6 +585,29 @@ body {
     transform: scale(1.03);
 }
 
+.download-thumb-btn {
+    width: 100%;
+    margin-top: -0.6rem;
+    margin-bottom: 0.2rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: var(--transition);
+}
+
+.download-thumb-btn:hover {
+    background: var(--theme-gradient);
+    border-color: transparent;
+    color: #fff;
+    box-shadow: 0 5px 15px var(--primary-glow);
+    transform: translateY(-2px);
+}
+
+.download-thumb-btn:active {
+    transform: translateY(1px);
+}
+
 .badge-duration {
     position: absolute;
     bottom: 0.85rem;
