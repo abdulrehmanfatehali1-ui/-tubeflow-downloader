@@ -94,19 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         videoThumbnail.addEventListener('error', () => {
-            if (thumbnailPlaceholder) {
-                thumbnailPlaceholder.style.display = 'flex';
-                let iconClass = 'fa-solid fa-play';
-                if (activePlatform === 'youtube') iconClass = 'fa-brands fa-youtube';
-                else if (activePlatform === 'instagram') iconClass = 'fa-brands fa-instagram';
-                else if (activePlatform === 'tiktok') iconClass = 'fa-brands fa-tiktok';
-                else if (activePlatform === 'facebook') iconClass = 'fa-brands fa-facebook';
-                else if (activePlatform === 'universal') iconClass = 'fa-solid fa-globe';
-                
-                thumbnailPlaceholder.className = `thumb-placeholder placeholder-${activePlatform}`;
-                thumbnailPlaceholder.innerHTML = `<i class="${iconClass} placeholder-logo"></i>`;
-            }
-            videoThumbnail.style.display = 'none';
+            showThumbnailPlaceholder();
         });
     }
 });
@@ -790,6 +778,24 @@ function showStatus(message, type) {
 }
 
 // Render Results to DOM
+function showThumbnailPlaceholder() {
+    const videoThumbnail = document.getElementById('video-thumbnail');
+    const thumbnailPlaceholder = document.getElementById('thumbnail-placeholder');
+    if (thumbnailPlaceholder) {
+        thumbnailPlaceholder.style.display = 'flex';
+        let iconClass = 'fa-solid fa-play';
+        if (activePlatform === 'youtube') iconClass = 'fa-brands fa-youtube';
+        else if (activePlatform === 'instagram') iconClass = 'fa-brands fa-instagram';
+        else if (activePlatform === 'tiktok') iconClass = 'fa-brands fa-tiktok';
+        else if (activePlatform === 'facebook') iconClass = 'fa-brands fa-facebook';
+        else if (activePlatform === 'universal') iconClass = 'fa-solid fa-globe';
+        
+        thumbnailPlaceholder.className = `thumb-placeholder placeholder-${activePlatform}`;
+        thumbnailPlaceholder.innerHTML = `<i class="${iconClass} placeholder-logo"></i>`;
+    }
+    if (videoThumbnail) videoThumbnail.style.display = 'none';
+}
+
 function displayResults(video) {
     // Reset thumbnail loading/placeholder state
     const videoThumbnail = document.getElementById('video-thumbnail');
@@ -801,8 +807,12 @@ function displayResults(video) {
     }
     if (videoThumbnail) videoThumbnail.style.display = 'none';
 
-    // Fill basic metadata
-    document.getElementById('video-thumbnail').src = video.thumbnail || 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=640';
+    // Fill basic metadata (removed Unsplash fallback to trigger the platform gradient error placeholder instead)
+    if (video.thumbnail && video.thumbnail !== '') {
+        document.getElementById('video-thumbnail').src = video.thumbnail;
+    } else {
+        showThumbnailPlaceholder();
+    }
     
     // Manage aspect-ratio layout and hide duration badge if duration is unknown (e.g. some live streams/FB reels)
     const durationBadge = document.getElementById('video-duration');
