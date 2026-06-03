@@ -1193,7 +1193,7 @@ async function getCobaltMergedLink(videoUrl, qualityLabel, isAudio = false) {
 // Helper: Checks if there is a running backend server (localhost or HuggingFace Spaces)
 function isServerSupported() {
     const hn = window.location.hostname;
-    return hn === 'localhost' || hn === '127.0.0.1' || hn.startsWith('192.168.') || hn.includes('huggingface.co') || hn.includes('space.google');
+    return hn === 'localhost' || hn === '127.0.0.1' || hn.startsWith('192.168.') || hn.includes('huggingface.co') || hn.includes('hf.space') || hn.includes('space.google');
 }
 
 // Trigger Asynchronous progress-monitored download (100% Client-Side Cobalt bypass first, Server-Side fallback)
