@@ -2034,7 +2034,7 @@ async function loadMailDomains() {
     } catch (e) {
         console.error('Error loading mail.tm domains:', e);
         // Fallback domains
-        mailDomains = ['mail.tm', 'secmail.pro'];
+        mailDomains = ['wshu.net'];
     }
 }
 
