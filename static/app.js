@@ -1640,8 +1640,15 @@ async function loadSMSCountries() {
     
     try {
         const response = await fetch('/api/sms/countries');
+        if (!response.ok) {
+            throw new Error(`HTTP Error ${response.status}`);
+        }
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            throw new Error('Server returned invalid content format');
+        }
         const data = await response.json();
-        if (!response.ok || data.error) {
+        if (data.error) {
             throw new Error(data.error || 'Failed to load countries');
         }
         smsCountries = data;
@@ -1706,8 +1713,15 @@ async function selectSMSCountry(code, name, flag) {
     
     try {
         const response = await fetch(`/api/sms/numbers?country=${code}`);
+        if (!response.ok) {
+            throw new Error(`HTTP Error ${response.status}`);
+        }
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            throw new Error('Server returned invalid content format');
+        }
         const data = await response.json();
-        if (!response.ok || data.error) {
+        if (data.error) {
             throw new Error(data.error || 'Failed to load numbers');
         }
         
@@ -1787,8 +1801,15 @@ async function fetchSMSMessages(number, silent = false) {
     
     try {
         const response = await fetch(`/api/sms/inbox?number=${number}`);
+        if (!response.ok) {
+            throw new Error(`HTTP Error ${response.status}`);
+        }
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            throw new Error('Server returned invalid content format');
+        }
         const data = await response.json();
-        if (!response.ok || data.error) {
+        if (data.error) {
             throw new Error(data.error || 'Failed to load inbox');
         }
         
