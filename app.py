@@ -106,13 +106,13 @@ PIPED_INSTANCES = [
 ]
 
 COBALT_INSTANCES = [
-    'https://co.wuk.sh',
-    'https://api.cobalt.tools',
-    'https://cobalt.api.ryz.cx',
-    'https://cobalt.best',
-    'https://cobalt.moe',
-    'https://co.eepy.today',
-    'https://api.kuko.rip'
+    'https://apicobalt.mgytr.top',
+    'https://cobaltapi.kittycat.boo',
+    'https://dog.kittycat.boo',
+    'https://fox.kittycat.boo',
+    'https://api.cobalt.liubquanti.click',
+    'https://api.cobalt.blackcat.sweeux.org',
+    'https://cobaltapi.cjs.nz'
 ]
 
 def get_dynamic_invidious_instances():

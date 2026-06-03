@@ -714,6 +714,40 @@ async function fetchClientSideMetadata(url) {
     let author = 'TubeFlow Bypass Engine';
     let thumbnail = '';
 
+    // Helper to expand short URL using corsproxy
+    async function expandPinterestUrl(shortUrl) {
+        try {
+            const corsUrl = `https://corsproxy.io/?${encodeURIComponent(shortUrl)}`;
+            const res = await fetch(corsUrl, { method: 'HEAD' });
+            if (res.ok && res.url) {
+                const idx = res.url.indexOf('?');
+                if (idx !== -1) {
+                    return decodeURIComponent(res.url.substring(idx + 1));
+                }
+                return res.url;
+            }
+        } catch (e) {
+            console.warn("Pinterest URL expansion failed:", e);
+        }
+        return shortUrl;
+    }
+
+    // Helper to clean Pinterest URL (removing /sent/ and parameters)
+    function cleanPinterestUrl(rawUrl) {
+        try {
+            const urlObj = new URL(rawUrl);
+            if (urlObj.hostname.includes('pinterest.com')) {
+                let path = urlObj.pathname;
+                // Replace /sent/ or similar trailings
+                path = path.replace(/\/sent\/?$/, '/');
+                urlObj.pathname = path;
+                urlObj.search = '';
+                return urlObj.toString();
+            }
+        } catch (_) {}
+        return rawUrl;
+    }
+
     try {
         let oEmbedUrl = '';
         if (isYouTube) {
@@ -721,7 +755,12 @@ async function fetchClientSideMetadata(url) {
         } else if (isTikTok) {
             oEmbedUrl = `https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`;
         } else if (isPinterest) {
-            oEmbedUrl = `https://corsproxy.io/?https://www.pinterest.com/oembed.json?url=${encodeURIComponent(url)}`;
+            let targetUrl = url;
+            if (url.includes('pin.it') || url.includes('/sent/')) {
+                const expanded = await expandPinterestUrl(url);
+                targetUrl = cleanPinterestUrl(expanded);
+            }
+            oEmbedUrl = `https://corsproxy.io/?https://www.pinterest.com/oembed.json?url=${encodeURIComponent(targetUrl)}`;
         }
 
         if (oEmbedUrl) {
@@ -1048,7 +1087,6 @@ async function getCobaltMergedLink(videoUrl, qualityLabel, isAudio = false) {
     else if (qLower.includes('480')) q = '480';
     else if (qLower.includes('360')) q = '360';
     
-    // Modern Cobalt v10/v11 API schema parameters
     const payload = {
         url: videoUrl,
         videoQuality: q,
@@ -1063,40 +1101,66 @@ async function getCobaltMergedLink(videoUrl, qualityLabel, isAudio = false) {
         'Content-Type': 'application/json'
     };
     
-    for (let instance of instances) {
-        // Try v11 POST / first, fall back to POST /api/json for older instances
-        for (let path of ["/", "/api/json"]) {
-            try {
-                const targetUrl = `${instance.replace(/\/$/, '')}${path}`;
-                const response = await fetch(targetUrl, {
-                    method: 'POST',
-                    headers: headers,
-                    body: JSON.stringify(payload)
-                });
-                
+    return new Promise((resolve, reject) => {
+        let completed = 0;
+        let resolved = false;
+        const controllers = [];
+        
+        const targets = [];
+        instances.forEach(inst => {
+            targets.push({ url: `${inst.replace(/\/$/, '')}/`, payload });
+            targets.push({ url: `${inst.replace(/\/$/, '')}/api/json`, payload });
+        });
+        
+        targets.forEach(target => {
+            const controller = new AbortController();
+            controllers.push(controller);
+            
+            fetch(target.url, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(target.payload),
+                signal: controller.signal
+            })
+            .then(async response => {
+                if (resolved) return;
                 if (response.ok) {
                     const json = await response.json();
-                    if (json) {
-                        // Standard tunnel/stream URL
-                        if (json.url || json.tunnel) {
-                            return {
-                                url: json.url || json.tunnel,
-                                filename: json.filename || 'download'
-                            };
-                        }
-                        // Picker (splits video and audio for high quality) - take first
+                    if (json && (json.url || json.tunnel || json.status === 'picker' || json.status === 'redirect')) {
+                        resolved = true;
+                        controllers.forEach(c => c.abort());
+                        
+                        let dlUrl = json.url || json.tunnel;
                         if (json.status === 'picker' && json.picker && json.picker.length > 0) {
-                            return {
-                                url: json.picker[0].url || json.picker[0].tunnel,
+                            dlUrl = json.picker[0].url || json.picker[0].tunnel;
+                        }
+                        
+                        if (dlUrl) {
+                            resolve({
+                                url: dlUrl,
                                 filename: json.filename || 'download'
-                            };
+                            });
                         }
                     }
                 }
-            } catch (_) {}
-        }
-    }
-    throw new Error("Bypass servers are currently rate-limited. Please select a standard format.");
+            })
+            .catch(() => {})
+            .finally(() => {
+                completed++;
+                if (completed >= targets.length && !resolved) {
+                    reject(new Error("All bypass servers failed."));
+                }
+            });
+        });
+        
+        // 6 second connection timeout
+        setTimeout(() => {
+            if (!resolved) {
+                controllers.forEach(c => c.abort());
+                reject(new Error("Bypass servers connection timeout."));
+            }
+        }, 6000);
+    });
 }
 
 // Helper: Checks if there is a running backend server (localhost or HuggingFace Spaces)
