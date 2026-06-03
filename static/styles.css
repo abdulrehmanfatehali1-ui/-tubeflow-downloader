@@ -1504,3 +1504,34 @@ body {
     color: #f72585;
     border: 1px solid rgba(247, 37, 133, 0.15);
 }
+
+/* Premium Success Buttons and Progress Actions */
+.btn-success {
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: #fff !important;
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.35);
+}
+.btn-success:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 25px rgba(16, 185, 129, 0.45);
+    filter: brightness(1.15);
+}
+.btn-success:active {
+    transform: translateY(1px);
+}
+.progress-actions {
+    margin-top: 1.25rem;
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    animation: slideIn 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+.progress-actions .btn {
+    width: 100%;
+    text-align: center;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.65rem;
+}

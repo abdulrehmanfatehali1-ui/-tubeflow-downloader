@@ -133,23 +133,47 @@ def get_dynamic_invidious_instances():
         pass
     return INVIDIOUS_INSTANCES
 
-def query_single_cobalt(instance, url):
+def query_single_cobalt(instance, url, quality_label=None, is_audio=False):
     headers = {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
     }
     
+    # Map quality label
+    q = '720'
+    if quality_label:
+        ql = quality_label.lower()
+        if '2160' in ql or '4k' in ql: q = 'max'
+        elif '1440' in ql or '2k' in ql: q = '1440'
+        elif '1080' in ql: q = '1080'
+        elif '720' in ql: q = '720'
+        elif '480' in ql: q = '480'
+        elif '360' in ql: q = '360'
+        
+    download_mode = 'audio' if is_audio else 'auto'
+    audio_format = 'mp3' if is_audio else 'best'
+    
     payloads = [
+        # Modern v10/v11 API payload
+        {
+            'url': url,
+            'videoQuality': q,
+            'downloadMode': download_mode,
+            'audioFormat': audio_format,
+            'filenameStyle': 'basic'
+        },
         # Level 1: Strict v7 payload
         {
             'url': url,
-            'videoQuality': '720'
+            'videoQuality': q,
+            'downloadMode': download_mode
         },
         # Level 2: Strict v6 payload
         {
             'url': url,
-            'vQuality': '720'
+            'vQuality': q,
+            'downloadMode': download_mode
         },
         # Level 3: Minimal universal payload
         {
@@ -157,7 +181,7 @@ def query_single_cobalt(instance, url):
         }
     ]
     
-    for path in ["/api/json", ""]:
+    for path in ["/", "/api/json", ""]:
         for payload in payloads:
             try:
                 target_url = f"{instance.rstrip('/')}{path}"
@@ -1113,7 +1137,7 @@ def extract_video_data_server(url):
                 parsed_res = parse_piped_info(data, url)
             return parsed_res
         else:
-            raise Exception('Could not extract video information. YouTube is actively blocking this server IP. Please try again.')
+            raise Exception('Could not extract video information. The platform is blocking extraction, or the link is invalid. Please try again.')
         
     # Select best high-res thumbnail
     thumbnail = info.get('thumbnail')
@@ -1480,8 +1504,21 @@ def universal_server_download_worker(url, format_id, task_id, quality_label, for
         is_youtube = "youtube.com" in url or "youtu.be" in url
         is_merge = (format_type == 'merge')
         
+        # Check if the format ID is a Cobalt-specific type
+        is_cobalt_format = False
+        try:
+            if format_id:
+                decoded_fid = base64.b64decode(format_id.encode('utf-8')).decode('utf-8')
+                if 'cobalt' in decoded_fid:
+                    is_cobalt_format = True
+        except Exception:
+            pass
+
+        is_audio = (format_type == 'audio' or quality_label == 'Audio')
+
         # 1. Primary High-Speed Bypass: Request unblocked public Cobalt API directly
-        if is_youtube:
+        # Always try Cobalt bypass first for YouTube, Cobalt-specific formats, or universal links!
+        if is_youtube or is_cobalt_format or not is_youtube:
             with tasks_lock:
                 DOWNLOAD_TASKS[task_id].update({
                     'status': 'downloading',
@@ -1490,11 +1527,21 @@ def universal_server_download_worker(url, format_id, task_id, quality_label, for
                 })
             try:
                 cobalt_res = None
-                for instance in COBALT_INSTANCES:
-                    res = query_single_cobalt(instance, url)
-                    if res:
-                        cobalt_res = res
-                        break
+                
+                # Fetch concurrently using thread pool
+                def check_instance(instance):
+                    return query_single_cobalt(instance, url, quality_label, is_audio)
+                
+                with ThreadPoolExecutor(max_workers=len(COBALT_INSTANCES)) as executor:
+                    futures = [executor.submit(check_instance, inst) for inst in COBALT_INSTANCES]
+                    for future in as_completed(futures, timeout=8.0):
+                        try:
+                            res = future.result()
+                            if res:
+                                cobalt_res = res
+                                break
+                        except Exception:
+                            pass
                 
                 if cobalt_res:
                     cobalt_data = cobalt_res['data']
@@ -1504,7 +1551,7 @@ def universal_server_download_worker(url, format_id, task_id, quality_label, for
                         if items:
                             direct_url = items[0].get('url') or items[0].get('tunnel')
                     title = cobalt_data.get('filename') or "video"
-                    if title.endswith('.mp4') or title.endswith('.webm') or title.endswith('.mkv'):
+                    if title.endswith('.mp4') or title.endswith('.webm') or title.endswith('.mkv') or title.endswith('.mp3') or title.endswith('.m4a'):
                         title = title.rsplit('.', 1)[0]
                         
                     with tasks_lock:
@@ -1523,7 +1570,8 @@ def universal_server_download_worker(url, format_id, task_id, quality_label, for
                         response = requests.get(direct_url, headers=headers, stream=True, timeout=30)
                     response.raise_for_status()
                     
-                    final_filepath = os.path.join(temp_dir, f"tubeflow_{task_id}.mp4")
+                    ext = 'mp3' if is_audio else 'mp4'
+                    final_filepath = os.path.join(temp_dir, f"tubeflow_{task_id}.{ext}")
                     total_size = int(response.headers.get('content-length', 0))
                     downloaded = 0
                     
@@ -1542,7 +1590,7 @@ def universal_server_download_worker(url, format_id, task_id, quality_label, for
                                     })
                                     
                     safe_title = sanitize_filename(title)
-                    filename = f"{safe_title}.mp4"
+                    filename = f"{safe_title}.{ext}"
                     
                     with tasks_lock:
                         DOWNLOAD_TASKS[task_id].update({

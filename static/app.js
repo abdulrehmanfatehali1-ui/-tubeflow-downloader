@@ -4,6 +4,87 @@ let activeTab = 'video';
 let activePlatform = 'youtube';
 let activeDownloadInterval = null;
 
+// Helper: get proxied thumbnail URL to bypass hotlink protection on Pinterest, Instagram, TikTok, Facebook, etc.
+function getProxiedThumbnail(thumbnailUrl) {
+    if (!thumbnailUrl) return '';
+    if (thumbnailUrl.includes('corsproxy.io') || thumbnailUrl.startsWith('data:') || thumbnailUrl.startsWith('blob:')) {
+        return thumbnailUrl;
+    }
+    if (thumbnailUrl.includes('youtube.com') || thumbnailUrl.includes('youtu.be') || thumbnailUrl.includes('ytimg.com')) {
+        return thumbnailUrl;
+    }
+    return `https://corsproxy.io/?${encodeURIComponent(thumbnailUrl)}`;
+}
+
+// Helper: fetch Blob with progress tracking
+async function fetchWithProgress(url, onProgress) {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    
+    const contentLength = response.headers.get('content-length');
+    if (!contentLength) {
+        const blob = await response.blob();
+        return blob;
+    }
+    
+    const total = parseInt(contentLength, 10);
+    let loaded = 0;
+    
+    const reader = response.body.getReader();
+    const chunks = [];
+    
+    while(true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        
+        chunks.push(value);
+        loaded += value.length;
+        
+        if (onProgress) {
+            const percent = Math.round((loaded / total) * 100);
+            onProgress(percent);
+        }
+    }
+    
+    return new Blob(chunks);
+}
+
+// Helper: display and configure the manual Save button in progress area
+function showDownloadSaveButton(url, filename, isError = false) {
+    const progressActions = document.getElementById('progress-actions');
+    const saveBtn = document.getElementById('progress-download-btn');
+    
+    if (progressActions && saveBtn) {
+        saveBtn.href = url;
+        saveBtn.download = filename;
+        
+        const spanText = saveBtn.querySelector('span');
+        const icon = saveBtn.querySelector('i');
+        
+        if (isError) {
+            saveBtn.className = 'btn btn-secondary';
+            if (spanText) spanText.textContent = 'Open Stream Link';
+            if (icon) icon.className = 'fa-solid fa-up-right-from-square';
+            saveBtn.target = '_blank';
+            saveBtn.onclick = null;
+        } else {
+            saveBtn.className = 'btn btn-success btn-dynamic-accent';
+            if (spanText) spanText.textContent = 'Save Video to Device';
+            if (icon) icon.className = 'fa-solid fa-circle-arrow-down';
+            saveBtn.removeAttribute('target');
+            saveBtn.onclick = () => {
+                setTimeout(() => {
+                    const progressSection = document.getElementById('progress-section');
+                    if (progressSection) progressSection.classList.add('hidden');
+                    progressActions.classList.add('hidden');
+                }, 4000);
+            };
+        }
+        
+        progressActions.classList.remove('hidden');
+    }
+}
+
 // DOM Elements
 const bodyEl = document.body;
 const urlInput = document.getElementById('youtube-url');
@@ -649,7 +730,7 @@ async function fetchClientSideMetadata(url) {
                 const json = await res.json();
                 title = json.title || title;
                 author = json.author_name || json.provider_name || author;
-                thumbnail = json.thumbnail_url || thumbnail;
+                thumbnail = json.thumbnail_url || json.url || thumbnail;
             }
         }
     } catch (e) {
@@ -809,7 +890,7 @@ function displayResults(video) {
 
     // Fill basic metadata (removed Unsplash fallback to trigger the platform gradient error placeholder instead)
     if (video.thumbnail && video.thumbnail !== '') {
-        document.getElementById('video-thumbnail').src = video.thumbnail;
+        document.getElementById('video-thumbnail').src = getProxiedThumbnail(video.thumbnail);
     } else {
         showThumbnailPlaceholder();
     }
@@ -1018,6 +1099,12 @@ async function getCobaltMergedLink(videoUrl, qualityLabel, isAudio = false) {
     throw new Error("Bypass servers are currently rate-limited. Please select a standard format.");
 }
 
+// Helper: Checks if there is a running backend server (localhost or HuggingFace Spaces)
+function isServerSupported() {
+    const hn = window.location.hostname;
+    return hn === 'localhost' || hn === '127.0.0.1' || hn.startsWith('192.168.') || hn.includes('huggingface.co') || hn.includes('space.google');
+}
+
 // Trigger Asynchronous progress-monitored download (100% Client-Side Cobalt bypass first, Server-Side fallback)
 async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     if (!currentVideo) return;
@@ -1026,8 +1113,13 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     const title = currentVideo.title;
     const downloadFilename = `${title.replace(/[\\/*?"<>|]/g, '')}_${qualityLabel}.${ext}`;
     const isAudio = formatType === 'audio' || qualityLabel === 'Audio' || ext === 'mp3' || ext === 'm4a';
+    let directStreamUrl = null;
 
-    // Helper: trigger direct browser download
+    // Reset manual download button container
+    const progressActions = document.getElementById('progress-actions');
+    if (progressActions) progressActions.classList.add('hidden');
+
+    // Helper: trigger direct browser download (must throw error if fetch/CORS blocks so we can fall back to server)
     async function triggerBrowserDownload(downloadUrl, filename) {
         if (downloadUrl.startsWith('blob:') || downloadUrl.startsWith('data:')) {
             const link = document.createElement('a');
@@ -1039,43 +1131,36 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
             return;
         }
 
-        // Try downloading via Blob fetch to prevent opening in a new tab for cross-origin URLs
-        try {
-            const res = await fetch(downloadUrl);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const blob = await res.blob();
-            const blobUrl = URL.createObjectURL(blob);
+        // Fetch with progress reporting!
+        const blob = await fetchWithProgress(downloadUrl, (percent) => {
+            const mappedPct = 20 + Math.round(percent * 0.7);
+            const progressFill = document.getElementById('progress-bar-fill');
+            const progressPercent = document.getElementById('progress-percent');
+            const progressStatus = document.getElementById('progress-status');
             
+            if (progressFill) progressFill.style.width = `${mappedPct}%`;
+            if (progressPercent) progressPercent.textContent = `${percent}%`;
+            if (progressStatus) progressStatus.innerHTML = `<i class="fa-solid fa-spinner fa-spin font-accent"></i> Streaming file to browser memory...`;
+        });
+        
+        const blobUrl = URL.createObjectURL(blob);
+        
+        // Show manual Save button in the actions area
+        showDownloadSaveButton(blobUrl, filename);
+
+        // Also try auto-clicking it
+        try {
             const link = document.createElement('a');
             link.href = blobUrl;
             link.download = filename;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
-            
-            setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
-        } catch (err) {
-            console.warn("Blob fetch download failed, falling back to hidden iframe method...", err);
-            try {
-                let iframe = document.getElementById('download-iframe');
-                if (!iframe) {
-                    iframe = document.createElement('iframe');
-                    iframe.id = 'download-iframe';
-                    iframe.style.display = 'none';
-                    document.body.appendChild(iframe);
-                }
-                iframe.src = downloadUrl;
-            } catch (iframeErr) {
-                console.error("Iframe download fallback failed, resorting to opening link in new tab...", iframeErr);
-                const link = document.createElement('a');
-                link.href = downloadUrl;
-                link.target = '_blank';
-                link.download = filename;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            }
+        } catch (e) {
+            console.warn("Auto-download trigger failed, user can click manual button:", e);
         }
+        
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
     }
 
     // Decode the format ID to check if it's already a direct download URL
@@ -1095,7 +1180,12 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
 
     if (isAlreadyStreamUrl) {
         showStatus('Starting instant direct download...', 'success');
-        triggerBrowserDownload(sourceUrl, downloadFilename);
+        try {
+            await triggerBrowserDownload(sourceUrl, downloadFilename);
+        } catch (err) {
+            console.warn("Direct stream download failed, opening link in new window...", err);
+            window.open(sourceUrl, '_blank');
+        }
         return;
     }
 
@@ -1121,31 +1211,64 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
         // This runs on the client's residential IP → 100% immune to server IP blocks!
         const res = await getCobaltMergedLink(url, qualityLabel, isAudio);
         if (res && res.url) {
-            progressFill.style.width = '100%';
-            progressFill.classList.remove('pulsing-fill');
-            progressPercent.textContent = '100%';
-            progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Bypass successful! Starting high-speed download...</span>`;
+            directStreamUrl = res.url;
+            progressStatus.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin font-accent"></i> Directing download stream...`;
             
-            triggerBrowserDownload(res.url, downloadFilename);
-            showStatus('Download started successfully!', 'success');
-            toggleDownloadButtons(true);
-            setTimeout(() => progressSection.classList.add('hidden'), 5000);
-            return;
+            try {
+                // Await browser download. If fetch fails (CORS block on direct stream URL), it throws error.
+                await triggerBrowserDownload(res.url, downloadFilename);
+                
+                progressFill.style.width = '100%';
+                progressFill.classList.remove('pulsing-fill');
+                progressPercent.textContent = '100%';
+                progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Bypass successful! Download started.</span>`;
+                showStatus('Download started successfully!', 'success');
+                toggleDownloadButtons(true);
+                return;
+            } catch (dlErr) {
+                console.warn("Direct browser download failed, checking server availability...", dlErr);
+                if (isServerSupported()) {
+                    // Fall back to server-side proxy download which bypasses CORS and forces attachment downloads!
+                    throw dlErr;
+                } else {
+                    // Static host: No server backend is available! We must use hidden iframe, and if that fails, open in new tab!
+                    progressStatus.innerHTML = `<i class="fa-solid fa-cloud-arrow-down"></i> Redirecting download stream...`;
+                    
+                    // Show direct link fallback in the button
+                    showDownloadSaveButton(res.url, downloadFilename, true);
+                    
+                    try {
+                        let iframe = document.getElementById('download-iframe');
+                        if (!iframe) {
+                            iframe = document.createElement('iframe');
+                            iframe.id = 'download-iframe';
+                            iframe.style.display = 'none';
+                            document.body.appendChild(iframe);
+                        }
+                        iframe.src = res.url;
+                    } catch (iframeErr) {
+                        window.open(res.url, '_blank');
+                    }
+                    progressFill.style.width = '100%';
+                    progressFill.classList.remove('pulsing-fill');
+                    progressPercent.textContent = '100%';
+                    progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Direct download triggered!</span>`;
+                    toggleDownloadButtons(true);
+                    return;
+                }
+            }
         }
     } catch (err) {
         console.warn("Client-side Cobalt bypass failed. Falling back to server-side pipeline...", err);
     }
 
     // Fallback: If client-side bypass fails, route to server-side pipeline
-    progressStatus.innerHTML = `<i class="fa-solid fa-server fa-spin font-accent"></i> Client bypass busy. Routing to server-side pipeline...`;
-    startServerSideDownload(formatId, ext, qualityLabel, formatType, downloadFilename);
+    progressStatus.innerHTML = `<i class="fa-solid fa-server fa-spin font-accent"></i> Client bypass failed. Routing to server-side pipeline...`;
+    startServerSideDownload(formatId, ext, qualityLabel, formatType, downloadFilename, directStreamUrl);
 }
 
-
-
 // Secure Server-Side download & merge manager with realtime progress polling
-
-function startServerSideDownload(formatId, ext, qualityLabel, formatTypeOrIsMerge, downloadFilename) {
+function startServerSideDownload(formatId, ext, qualityLabel, formatTypeOrIsMerge, downloadFilename, directStreamUrl = null) {
     const url = currentVideo.url;
     const progressFill = document.getElementById('progress-bar-fill');
     const progressPercent = document.getElementById('progress-percent');
@@ -1158,6 +1281,10 @@ function startServerSideDownload(formatId, ext, qualityLabel, formatTypeOrIsMerg
         activeDownloadInterval = null;
     }
     
+    // Reset manual download button container
+    const progressActions = document.getElementById('progress-actions');
+    if (progressActions) progressActions.classList.add('hidden');
+
     // Display and initialize the progress UI section
     showStatus('Processing download... Please wait.', 'loading');
     progressSection.classList.remove('hidden');
@@ -1223,18 +1350,22 @@ function startServerSideDownload(formatId, ext, qualityLabel, formatTypeOrIsMerg
                             
                             const downloadUrl = `/api/download/get?task_id=${taskId}`;
                             
-                            const link = document.createElement('a');
-                            link.href = downloadUrl;
-                            document.body.appendChild(link);
-                            link.click();
-                            document.body.removeChild(link);
+                            // Show save button in the UI
+                            showDownloadSaveButton(downloadUrl, downloadFilename);
+                            
+                            // Trigger auto-download in current window to bypass popup blocker
+                            try {
+                                window.location.href = downloadUrl;
+                            } catch (e) {
+                                const link = document.createElement('a');
+                                link.href = downloadUrl;
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                            }
                             
                             showStatus('Download completed successfully!', 'success');
                             toggleDownloadButtons(true);
-                            
-                            setTimeout(() => {
-                                progressSection.classList.add('hidden');
-                            }, 8000);
                         } else if (progress.status === 'error') {
                             clearInterval(activeDownloadInterval);
                             activeDownloadInterval = null;
@@ -1255,7 +1386,15 @@ function startServerSideDownload(formatId, ext, qualityLabel, formatTypeOrIsMerg
     function handleDownloadFailure(errorMsg) {
         console.error("Server-side download error:", errorMsg);
         progressPercent.textContent = 'Failed';
-        progressStatus.innerHTML = `<span style="color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Bypass Failed: ${errorMsg}<br>Please select a different resolution or try again.</span>`;
+        
+        let fallbackMsg = '';
+        if (directStreamUrl) {
+            fallbackMsg = `<br><a href="${directStreamUrl}" target="_blank" style="color: var(--primary-color); text-decoration: underline; font-weight: bold;"><i class="fa-solid fa-up-right-from-square"></i> Open direct stream link in new tab</a>`;
+            // Show manual download button as fallback too
+            showDownloadSaveButton(directStreamUrl, downloadFilename, true);
+        }
+        
+        progressStatus.innerHTML = `<span style="color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Bypass Failed: ${errorMsg}${fallbackMsg}</span>`;
         toggleDownloadButtons(true);
     }
 }
@@ -1332,7 +1471,7 @@ function renderHistory() {
         
         card.innerHTML = `
             <div class="history-info-left">
-                <img class="history-thumb" src="${video.thumbnail || 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=120'}" alt="Thumb">
+                <img class="history-thumb" src="${video.thumbnail ? getProxiedThumbnail(video.thumbnail) : 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=120'}" alt="Thumb">
                 <div class="history-metadata">
                     <span class="history-video-title">${video.title}</span>
                     <span class="history-video-author">${video.author} &bull; ${video.views_formatted} &bull; ${video.duration_formatted}</span>
