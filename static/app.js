@@ -1,3 +1,11 @@
+// Determine API base URL depending on hosting environment to enable static site decoders fallback (like GitHub Pages)
+const API_BASE_URL = (
+    window.location.hostname.includes('hf.space') || 
+    window.location.hostname === 'localhost' || 
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname === ''
+) ? '' : 'https://abdulrehmanfatehali1-tubeflow-downloader.hf.space';
+
 // State Variables
 let currentVideo = null;
 let activeTab = 'video';
@@ -15,7 +23,7 @@ function getProxiedThumbnail(thumbnailUrl) {
     }
     // If Flask backend is available, use our own high-speed server image proxy!
     if (isServerSupported()) {
-        return `/api/proxy-image?url=${encodeURIComponent(thumbnailUrl)}`;
+        return `${API_BASE_URL}/api/proxy-image?url=${encodeURIComponent(thumbnailUrl)}`;
     }
     return `https://corsproxy.io/?${encodeURIComponent(thumbnailUrl)}`;
 }
@@ -683,7 +691,7 @@ async function handleFetch(urlToFetch = null) {
     if (!data) {
         showStatus('Trying server extraction...', 'loading');
         try {
-            const response = await fetch(`/api/info?url=${encodeURIComponent(url)}`);
+            const response = await fetch(`${API_BASE_URL}/api/info?url=${encodeURIComponent(url)}`);
             const serverData = await response.json();
             if (!response.ok || serverData.error) {
                 throw new Error(serverData.error || 'Server extraction failed');
@@ -791,7 +799,7 @@ async function fetchClientSideMetadata(url) {
                 if (oEmbedUrl.includes('corsproxy.io/?')) {
                     rawOEmbedUrl = decodeURIComponent(oEmbedUrl.split('corsproxy.io/?')[1]);
                 }
-                fetchUrl = `/api/proxy-oembed?url=${encodeURIComponent(rawOEmbedUrl)}`;
+                fetchUrl = `${API_BASE_URL}/api/proxy-oembed?url=${encodeURIComponent(rawOEmbedUrl)}`;
             }
             const res = await fetch(fetchUrl);
             if (res.ok) {
@@ -1195,7 +1203,7 @@ async function getCobaltMergedLink(videoUrl, qualityLabel, isAudio = false) {
 // Helper: Checks if there is a running backend server (localhost or HuggingFace Spaces)
 function isServerSupported() {
     const hn = window.location.hostname;
-    return hn === 'localhost' || hn === '127.0.0.1' || hn.startsWith('192.168.') || hn.includes('huggingface.co') || hn.includes('hf.space') || hn.includes('space.google');
+    return hn === 'localhost' || hn === '127.0.0.1' || hn.startsWith('192.168.') || hn.includes('huggingface.co') || hn.includes('hf.space') || hn.includes('space.google') || API_BASE_URL !== '';
 }
 
 // Trigger Asynchronous progress-monitored download (100% Client-Side Cobalt bypass first, Server-Side fallback)
@@ -1400,7 +1408,7 @@ function startServerSideDownload(formatId, ext, qualityLabel, formatTypeOrIsMerg
         formatType = 'combined';
     }
     
-    const startUrl = `/api/download/start?url=${encodeURIComponent(url)}&format_id=${encodeURIComponent(formatId)}&quality_label=${encodeURIComponent(qualityLabel)}&format_type=${encodeURIComponent(formatType)}`;
+    const startUrl = `${API_BASE_URL}/api/download/start?url=${encodeURIComponent(url)}&format_id=${encodeURIComponent(formatId)}&quality_label=${encodeURIComponent(qualityLabel)}&format_type=${encodeURIComponent(formatType)}`;
     
     fetch(startUrl)
         .then(res => {
@@ -1412,7 +1420,7 @@ function startServerSideDownload(formatId, ext, qualityLabel, formatTypeOrIsMerg
             const taskId = data.task_id;
             
             activeDownloadInterval = setInterval(() => {
-                fetch(`/api/download/progress?task_id=${taskId}`)
+                fetch(`${API_BASE_URL}/api/download/progress?task_id=${taskId}`)
                     .then(res => {
                         if (!res.ok) throw new Error("Progress connection lost");
                         return res.json();
@@ -1441,7 +1449,7 @@ function startServerSideDownload(formatId, ext, qualityLabel, formatTypeOrIsMerg
                             progressPercent.textContent = '100%';
                             progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Processing complete! Delivering file...</span>`;
                             
-                            const downloadUrl = `/api/download/get?task_id=${taskId}`;
+                            const downloadUrl = `${API_BASE_URL}/api/download/get?task_id=${taskId}`;
                             
                             // Show save button in the UI
                             showDownloadSaveButton(downloadUrl, downloadFilename);
@@ -1639,7 +1647,7 @@ async function loadSMSCountries() {
     container.innerHTML = '<div class="sms-loading"><i class="fa-solid fa-circle-notch fa-spin"></i> Fetching countries...</div>';
     
     try {
-        const response = await fetch('/api/sms/countries');
+        const response = await fetch(`${API_BASE_URL}/api/sms/countries`);
         if (!response.ok) {
             throw new Error(`HTTP Error ${response.status}`);
         }
@@ -1712,7 +1720,7 @@ async function selectSMSCountry(code, name, flag) {
     container.innerHTML = '<div class="sms-loading"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading numbers...</div>';
     
     try {
-        const response = await fetch(`/api/sms/numbers?country=${code}`);
+        const response = await fetch(`${API_BASE_URL}/api/sms/numbers?country=${code}`);
         if (!response.ok) {
             throw new Error(`HTTP Error ${response.status}`);
         }
@@ -1800,7 +1808,7 @@ async function fetchSMSMessages(number, silent = false) {
     }
     
     try {
-        const response = await fetch(`/api/sms/inbox?number=${number}`);
+        const response = await fetch(`${API_BASE_URL}/api/sms/inbox?number=${number}`);
         if (!response.ok) {
             throw new Error(`HTTP Error ${response.status}`);
         }
@@ -1982,7 +1990,7 @@ async function initTempMail() {
 // Helper client wrapper for Mail.tm via backend proxy route to bypass firewall blocks
 async function fetchMailTM(endpoint, options = {}) {
     try {
-        const response = await fetch(`/api/mail/tm/${endpoint}`, options);
+        const response = await fetch(`${API_BASE_URL}/api/mail/tm/${endpoint}`, options);
         if (!response.ok) {
             let errorMsg = `HTTP Error ${response.status}`;
             try {

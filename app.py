@@ -2110,6 +2110,14 @@ def mail_tm_proxy(subpath):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# Enable CORS for cross-origin frontend hosting environments (like GitHub Pages)
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization'
+    response.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
+    return response
+
 def run_server_on_android():
     os.makedirs('static', exist_ok=True)
     os.makedirs('templates', exist_ok=True)
