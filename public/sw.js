@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tubeflow-cache-v1';
+const CACHE_NAME = 'tubeflow-cache-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -36,6 +36,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = event.request.url;
   
+  // Skip API queries, third-party extractor fetches, and local dev posts so they never get cached
   if (
     event.request.method !== 'GET' ||
     url.includes('/api/') || 
@@ -49,7 +50,7 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       return cachedResponse || fetch(event.request).catch(() => {
-        // Fallback
+        // Optional fallback logic if offline
       });
     })
   );
