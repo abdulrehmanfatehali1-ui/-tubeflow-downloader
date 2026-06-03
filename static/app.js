@@ -908,244 +908,56 @@ async function getCobaltMergedLink(videoUrl, qualityLabel, isAudio = false) {
     throw new Error("SaaS merge servers are currently busy. Please try a standard 'Direct' resolution.");
 }
 
-// Trigger Asynchronous progress-monitored download (100% Serverless, Client-Side!)
+// Trigger Asynchronous progress-monitored download (100% Server-Side task pipeline with realtime progress)
 async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     if (!currentVideo) return;
     
-    const url = currentVideo.url;
     const title = currentVideo.title;
     const downloadFilename = `${title.replace(/[\\/*?"<>|]/g, '')}_${qualityLabel}.${ext}`;
-    const isAudio = formatType === 'audio' || qualityLabel === 'Audio';
-
-    // ── PROXY DOWNLOAD (No yt-dlp, No IP Block, 100% Working!) ──────────────
-    // URLs are already in format_id (from Invidious/Piped fetch).
-    // Server just decodes the URL and proxies the stream – zero extraction.
-    // Browser streams via fetch → real progress bar → blob → file save.
-    // ─────────────────────────────────────────────────────────────────────────
-
-    if (formatType === 'combined' || formatType === 'merge') {
-        showStatus('Processing download... Please wait.', 'loading');
-        progressSection.classList.remove('hidden');
-        progressSection.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        const pFill = document.getElementById('progress-bar-fill');
-        const pPct  = document.getElementById('progress-percent');
-        const pStat = document.getElementById('progress-status');
-        document.getElementById('progress-filename').textContent = downloadFilename;
-        pFill.style.width = '5%';
-        pFill.classList.add('pulsing-fill');
-        pPct.textContent = 'Connecting';
-        toggleDownloadButtons(false);
-
-        const fnParam   = encodeURIComponent(downloadFilename);
-        const proxyUrl  = formatType === 'combined'
-            ? `/api/proxy-stream?format_id=${encodeURIComponent(formatId)}&filename=${fnParam}`
-            : `/api/proxy-merge?format_id=${encodeURIComponent(formatId)}&filename=${fnParam}`;
-
-        if (formatType === 'merge') {
-            pStat.innerHTML = `<i class="fa-solid fa-server fa-spin font-accent"></i> Server downloading & merging HQ video+audio (please wait ~30s)...`;
-            pFill.style.width = '20%';
-            pPct.textContent = 'Merging';
-        } else {
-            pStat.innerHTML = `<i class="fa-solid fa-arrow-down fa-bounce font-accent"></i> Streaming download in progress...`;
-            pFill.style.width = '20%';
-            pPct.textContent = 'Downloading';
-        }
-
-        try {
-            // Fetch through our same-origin proxy endpoint
-            const response = await fetch(proxyUrl);
-            if (!response.ok) {
-                throw new Error(`Server returned ${response.status}: ${await response.text().catch(()=>'')}`);
-            }
-
-            // Stream chunks with real-time progress
-            const contentLength = response.headers.get('Content-Length');
-            const total = contentLength ? parseInt(contentLength) : 0;
-            const reader = response.body.getReader();
-            const chunks = [];
-            let received = 0;
-
-            pStat.innerHTML = `<i class="fa-solid fa-arrow-down fa-bounce font-accent"></i> Downloading... 0 MB`;
-            pFill.style.width = total ? '20%' : '50%';
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                chunks.push(value);
-                received += value.length;
-                const mb = (received / 1048576).toFixed(1);
-                if (total) {
-                    const pct = Math.round((received / total) * 80) + 20;
-                    pFill.style.width = `${pct}%`;
-                    pPct.textContent = `${Math.round((received/total)*100)}%`;
-                    pStat.innerHTML = `<i class="fa-solid fa-arrow-down fa-bounce font-accent"></i> Downloading... ${mb} MB / ${(total/1048576).toFixed(1)} MB`;
-                } else {
-                    pFill.style.width = '70%';
-                    pPct.textContent = `${mb} MB`;
-                    pStat.innerHTML = `<i class="fa-solid fa-arrow-down fa-bounce font-accent"></i> Downloading... ${mb} MB received`;
-                }
-            }
-
-            // All chunks received – create blob and trigger save
-            pFill.style.width = '95%';
-            pPct.textContent = '95%';
-            pStat.innerHTML = `<i class="fa-solid fa-file-zipper fa-spin font-accent"></i> Preparing file...`;
-
-            const blob = new Blob(chunks, { type: 'video/mp4' });
-            const objectUrl = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = objectUrl;
-            link.download = downloadFilename;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
-
-            pFill.style.width = '100%';
-            pFill.classList.remove('pulsing-fill');
-            pPct.textContent = '100%';
-            pStat.innerHTML = `<span style="color:var(--success)"><i class="fa-solid fa-circle-check"></i> Download complete! File saved.</span>`;
-            showStatus('Download completed successfully!', 'success');
-        } catch (proxyErr) {
-            console.error('Proxy download failed:', proxyErr);
-            pFill.classList.remove('pulsing-fill');
-            pPct.textContent = 'Failed';
-            pStat.innerHTML = `<span style="color:#ef4444"><i class="fa-solid fa-triangle-exclamation"></i> Download failed: ${proxyErr.message || 'Server error. Please try again.'}</span>`;
-            showStatus('Download failed. Please try again.', 'error');
-        }
-
-        toggleDownloadButtons(true);
-        setTimeout(() => progressSection.classList.add('hidden'), 8000);
-        return;
-    }
-
-    // Set Loading state
-    showStatus('Processing download... Please wait.', 'loading');
-    progressSection.classList.remove('hidden');
-    progressSection.scrollIntoView({ behavior: 'smooth', block: 'end' });
-
-
     
-    const progressFill = document.getElementById('progress-bar-fill');
-    const progressPercent = document.getElementById('progress-percent');
-    const progressStatus = document.getElementById('progress-status');
-    const progressFileLabel = document.getElementById('progress-filename');
-    
-    progressFileLabel.textContent = downloadFilename;
-    progressFill.style.width = '0%';
-    progressFill.classList.add('pulsing-fill');
-    progressPercent.textContent = 'Starting';
-    toggleDownloadButtons(false);
-
-    // Helper: trigger a native file download from a URL (same tab)
-    function doDirectDownload(downloadUrl, filename) {
-        progressFill.style.width = '100%';
-        progressFill.classList.remove('pulsing-fill');
-        progressPercent.textContent = '100%';
-        progressStatus.innerHTML = `<span style="color:var(--success)"><i class="fa-solid fa-circle-check"></i> Download started at full speed!</span>`;
-        showStatus('Download started successfully!', 'success');
-        toggleDownloadButtons(true);
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        setTimeout(() => progressSection.classList.add('hidden'), 5000);
-    }
-
-    // Decode the format ID to get the source URL
-    let sourceUrl = null;
-    try {
-        const decoded = atob(formatId);
-        if (decoded.includes('|')) sourceUrl = decoded.split('|')[0];
-    } catch (_) {}
-
-    // ── SMART DETECTION ──────────────────────────────────────────────
-    // If the source URL is already a Cobalt/stream URL (not googlevideo),
-    // download it directly – no API call needed, instant full-speed download!
-    // ─────────────────────────────────────────────────────────────────
-    const isAlreadyStreamUrl = sourceUrl && (
-        !sourceUrl.includes('googlevideo.com') &&
-        !sourceUrl.includes('youtube.com') &&
-        !sourceUrl.includes('ytimg.com') &&
-        sourceUrl.startsWith('http')
-    );
-
-    if (isAlreadyStreamUrl) {
-        progressStatus.innerHTML = `<i class="fa-solid fa-bolt fa-spin font-accent"></i> Stream URL detected — starting instant download...`;
-        progressFill.style.width = '80%';
-        progressPercent.textContent = 'Ready';
-        doDirectDownload(sourceUrl, downloadFilename);
-        return;
-    }
-
-    // ── YT-DLP STREAM PROXY (Primary – Server resolves + proxies stream!) ────
-    // Server uses yt-dlp to resolve the best combined video+audio URL, then
-    // streams it back through OUR server. Browser downloads from localhost
-    // (same-origin) → proper file save dialog, no new tab, audio+video merged!
-    // ─────────────────────────────────────────────────────────────────────────
-    progressStatus.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> Resolving stream via yt-dlp (audio+video merged)...`;
-    progressFill.style.width = '30%';
-    progressPercent.textContent = 'Connecting';
-
-    try {
-        const audioParam = isAudio ? '&audio=true' : '';
-        const qualityParam = encodeURIComponent(qualityLabel || '720p');
-        const filenameParam = encodeURIComponent(downloadFilename);
-        // /api/ytdlp-stream: server resolves + proxies the stream (same-origin)
-        const ytdlpStreamUrl = `/api/ytdlp-stream?url=${encodeURIComponent(url)}&quality=${qualityParam}${audioParam}&filename=${filenameParam}`;
-
-        progressStatus.innerHTML = `<i class="fa-solid fa-arrow-down fa-bounce font-accent"></i> Downloading merged stream (audio+video)...`;
-        progressFill.style.width = '70%';
-        progressPercent.textContent = 'Downloading';
-
-        doDirectDownload(ytdlpStreamUrl, downloadFilename);
-        return;
-    } catch (ytErr) {
-        console.warn('yt-dlp stream proxy failed:', ytErr);
-    }
-
-    // ── COBALT STREAM PROXY (Fallback) ────────────────────────────────────────
-    try {
-        const audioParam = isAudio ? '&audio=true' : '';
-        const qualityParam = encodeURIComponent(qualityLabel || '720p');
-        const filenameParam = encodeURIComponent(downloadFilename);
-        const streamUrl = `/api/cobalt-stream?url=${encodeURIComponent(url)}&quality=${qualityParam}${audioParam}&filename=${filenameParam}`;
-
-        progressStatus.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> Fallback: routing via Cobalt server stream...`;
-        doDirectDownload(streamUrl, downloadFilename);
-        return;
-    } catch (streamErr) {
-        console.warn('Server Cobalt stream proxy failed:', streamErr);
-    }
-
-    // ── LAST RESORT: Direct link click ───────────────────────────────
-    if (sourceUrl) {
-        progressStatus.innerHTML = `<i class="fa-solid fa-arrow-up-right-from-square fa-spin font-accent"></i> Triggering direct stream download...`;
-        doDirectDownload(sourceUrl, downloadFilename);
-        return;
-    }
-
-    progressPercent.textContent = 'Failed';
-    progressFill.classList.remove('pulsing-fill');
-    progressStatus.innerHTML = `<span style="color:#ef4444"><i class="fa-solid fa-triangle-exclamation"></i> Download failed. Please try a different format.</span>`;
-    toggleDownloadButtons(true);
+    // Route all downloads (merge, combined, audio) via our robust, 100% working background task downloader
+    startServerSideDownload(formatId, ext, qualityLabel, formatType, downloadFilename);
 }
 
 
 
 // Secure Server-Side download & merge manager with realtime progress polling
 
-function startServerSideDownload(formatId, ext, qualityLabel, isMerge, downloadFilename) {
+function startServerSideDownload(formatId, ext, qualityLabel, formatTypeOrIsMerge, downloadFilename) {
     const url = currentVideo.url;
     const progressFill = document.getElementById('progress-bar-fill');
     const progressPercent = document.getElementById('progress-percent');
     const progressStatus = document.getElementById('progress-status');
+    const progressFilename = document.getElementById('progress-filename');
+    
+    // Clear any active polling interval to prevent multiple polling requests
+    if (activeDownloadInterval) {
+        clearInterval(activeDownloadInterval);
+        activeDownloadInterval = null;
+    }
+    
+    // Display and initialize the progress UI section
+    showStatus('Processing download... Please wait.', 'loading');
+    progressSection.classList.remove('hidden');
+    progressSection.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    progressFilename.textContent = downloadFilename;
+    progressFill.style.width = '5%';
+    progressFill.classList.add('pulsing-fill');
+    progressPercent.textContent = 'Connecting';
+    toggleDownloadButtons(false);
     
     progressStatus.innerHTML = `<i class="fa-solid fa-server fa-spin font-accent"></i> Initializing secure server bypass connection...`;
     
-    const formatType = isMerge ? 'merge' : 'combined';
+    // Normalize formatType ('merge', 'combined', 'audio')
+    let formatType = 'combined';
+    if (formatTypeOrIsMerge === 'merge' || formatTypeOrIsMerge === true) {
+        formatType = 'merge';
+    } else if (formatTypeOrIsMerge === 'audio') {
+        formatType = 'audio';
+    } else if (formatTypeOrIsMerge === 'combined') {
+        formatType = 'combined';
+    }
+    
     const startUrl = `/api/download/start?url=${encodeURIComponent(url)}&format_id=${encodeURIComponent(formatId)}&quality_label=${encodeURIComponent(qualityLabel)}&format_type=${encodeURIComponent(formatType)}`;
     
     fetch(startUrl)
@@ -1183,8 +995,9 @@ function startServerSideDownload(formatId, ext, qualityLabel, isMerge, downloadF
                             activeDownloadInterval = null;
                             
                             progressFill.style.width = '100%';
+                            progressFill.classList.remove('pulsing-fill');
                             progressPercent.textContent = '100%';
-                            progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Processing complete! Delivering file in same tab...</span>`;
+                            progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Processing complete! Delivering file...</span>`;
                             
                             const downloadUrl = `/api/download/get?task_id=${taskId}`;
                             
@@ -1220,7 +1033,7 @@ function startServerSideDownload(formatId, ext, qualityLabel, isMerge, downloadF
     function handleDownloadFailure(errorMsg) {
         console.error("Server-side download error:", errorMsg);
         progressPercent.textContent = 'Failed';
-        progressStatus.innerHTML = `<span style="color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Bypass Failed: ${errorMsg}<br>Please select a standard <b>Direct (Combined)</b> format for instant download.</span>`;
+        progressStatus.innerHTML = `<span style="color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Bypass Failed: ${errorMsg}<br>Please select a different resolution or try again.</span>`;
         toggleDownloadButtons(true);
     }
 }
