@@ -640,7 +640,7 @@ async function fetchClientSideMetadata(url) {
         } else if (isTikTok) {
             oEmbedUrl = `https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`;
         } else if (isPinterest) {
-            oEmbedUrl = `https://www.pinterest.com/oembed.json?url=${encodeURIComponent(url)}`;
+            oEmbedUrl = `https://corsproxy.io/?https://www.pinterest.com/oembed.json?url=${encodeURIComponent(url)}`;
         }
 
         if (oEmbedUrl) {
@@ -1028,13 +1028,54 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     const isAudio = formatType === 'audio' || qualityLabel === 'Audio' || ext === 'mp3' || ext === 'm4a';
 
     // Helper: trigger direct browser download
-    function triggerBrowserDownload(downloadUrl, filename) {
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+    async function triggerBrowserDownload(downloadUrl, filename) {
+        if (downloadUrl.startsWith('blob:') || downloadUrl.startsWith('data:')) {
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            return;
+        }
+
+        // Try downloading via Blob fetch to prevent opening in a new tab for cross-origin URLs
+        try {
+            const res = await fetch(downloadUrl);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const blob = await res.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+        } catch (err) {
+            console.warn("Blob fetch download failed, falling back to hidden iframe method...", err);
+            try {
+                let iframe = document.getElementById('download-iframe');
+                if (!iframe) {
+                    iframe = document.createElement('iframe');
+                    iframe.id = 'download-iframe';
+                    iframe.style.display = 'none';
+                    document.body.appendChild(iframe);
+                }
+                iframe.src = downloadUrl;
+            } catch (iframeErr) {
+                console.error("Iframe download fallback failed, resorting to opening link in new tab...", iframeErr);
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.target = '_blank';
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        }
     }
 
     // Decode the format ID to check if it's already a direct download URL
