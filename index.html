@@ -79,6 +79,10 @@
                         <i class="fa-solid fa-globe icon-platform"></i>
                         <span>Universal</span>
                     </button>
+                    <button class="platform-tab btn-sms" onclick="selectPlatform('sms', this)">
+                        <i class="fa-solid fa-comment-sms icon-platform"></i>
+                        <span>Temp SMS</span>
+                    </button>
                 </div>
 
                 <!-- Input Console -->
@@ -191,6 +195,69 @@
                                 <i class="fa-solid fa-circle-arrow-down"></i>
                                 <span>Save Video to Device</span>
                             </a>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Free Virtual SMS Console -->
+                <section id="sms-section" class="card glass-card sms-section hidden">
+                    <div class="card-accent-glow"></div>
+                    
+                    <div class="sms-layout">
+                        <!-- Left Pane: Country and Number Selection -->
+                        <div class="sms-selector-pane">
+                            <h3 class="sms-pane-title"><i class="fa-solid fa-earth-americas"></i> Choose Country</h3>
+                            <div class="sms-search-box">
+                                <i class="fa-solid fa-magnifying-glass"></i>
+                                <input type="text" id="sms-country-search" placeholder="Search country..." oninput="filterCountries()">
+                            </div>
+                            <div class="sms-country-list" id="sms-countries-container">
+                                <!-- Loading placeholder -->
+                                <div class="sms-loading"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading countries...</div>
+                            </div>
+                            
+                            <div class="sms-number-box hidden" id="sms-numbers-box">
+                                <div class="sms-number-box-header">
+                                    <button class="btn-back" onclick="showCountryList()"><i class="fa-solid fa-arrow-left"></i> Countries</button>
+                                    <h3 class="sms-pane-title"><span id="active-country-flag"></span> <span id="active-country-name">Numbers</span></h3>
+                                </div>
+                                <div class="sms-number-list" id="sms-numbers-container">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Right Pane: Inbox Messages Feed -->
+                        <div class="sms-inbox-pane">
+                            <div class="sms-inbox-placeholder" id="sms-inbox-placeholder">
+                                <i class="fa-solid fa-comment-sms"></i>
+                                <h4>Virtual SMS Console</h4>
+                                <p>Select a country and number on the left to display its live verification inbox.</p>
+                            </div>
+                            
+                            <div class="sms-inbox-content hidden" id="sms-inbox-content">
+                                <div class="sms-inbox-header">
+                                    <div class="sms-number-info">
+                                        <div class="sms-number-row">
+                                            <h2 id="active-sms-number">+1 000 000 0000</h2>
+                                            <button class="btn btn-secondary btn-sm btn-copy" onclick="copyActiveNumber()">
+                                                <i class="fa-solid fa-copy"></i> Copy
+                                            </button>
+                                        </div>
+                                        <div class="sms-meta-badges">
+                                            <span class="sms-badge sms-live-badge"><span class="pulse-dot"></span> Live Inbox</span>
+                                            <span class="sms-badge sms-edu-badge"><i class="fa-solid fa-building-columns"></i> Educational Purpose Only</span>
+                                        </div>
+                                    </div>
+                                    <button class="btn btn-primary btn-sm btn-refresh" id="sms-refresh-btn" onclick="refreshInbox()">
+                                        <i class="fa-solid fa-rotate"></i> Refresh
+                                    </button>
+                                </div>
+                                
+                                <div class="sms-messages-container" id="sms-messages-container">
+                                    <!-- Messages inject here -->
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </section>

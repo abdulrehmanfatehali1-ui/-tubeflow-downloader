@@ -1870,6 +1870,161 @@ def get_finished_file():
     
     return Response(stream_with_context(generate_file()), headers=response_headers)
 
+# Free Virtual SMS Receiver endpoints using sms24.me
+@app.route('/api/sms/countries')
+def get_sms_countries():
+    try:
+        from bs4 import BeautifulSoup
+        url = "https://sms24.me/en/countries"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+        }
+        r = requests.get(url, headers=headers, timeout=10)
+        if r.status_code != 200:
+            return jsonify({'error': f'Failed to fetch countries: HTTP {r.status_code}'}), 502
+            
+        soup = BeautifulSoup(r.text, 'html.parser')
+        links = soup.find_all('a', href=True)
+        countries = []
+        for l in links:
+            href = l['href']
+            if "/en/countries/" in href:
+                code = href.split("/en/countries/")[-1].strip("/")
+                if not code:
+                    continue
+                h3_tag = l.find('h3')
+                name = h3_tag.get_text().strip() if h3_tag else ""
+                
+                span_flag = l.find('span')
+                flag = span_flag.get_text().strip() if span_flag else ""
+                
+                # Check for active number count
+                spans = l.find_all('span')
+                count = ""
+                if len(spans) > 1:
+                    count = spans[1].get_text().strip()
+                
+                countries.append({
+                    'code': code,
+                    'name': name,
+                    'flag': flag,
+                    'count': count
+                })
+        
+        # Deduplicate
+        unique_countries = []
+        seen = set()
+        for c in countries:
+            if c['code'] not in seen:
+                seen.add(c['code'])
+                unique_countries.append(c)
+                
+        return jsonify(unique_countries)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/sms/numbers')
+def get_sms_numbers():
+    country = request.args.get('country', '').strip().lower()
+    if not country:
+        return jsonify({'error': 'Country code is required'}), 400
+    try:
+        from bs4 import BeautifulSoup
+        url = f"https://sms24.me/en/countries/{country}"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+        }
+        r = requests.get(url, headers=headers, timeout=10)
+        if r.status_code != 200:
+            return jsonify({'error': f'Failed to fetch numbers: HTTP {r.status_code}'}), 502
+            
+        soup = BeautifulSoup(r.text, 'html.parser')
+        links = soup.find_all('a', href=True)
+        numbers = []
+        for l in links:
+            href = l['href']
+            if "/en/numbers/" in href:
+                num = href.split("/en/numbers/")[-1].strip("/")
+                num = num.split("?")[0].split("/")[0]
+                if num.isdigit() and len(num) > 6:
+                    h3_tag = l.find('h3')
+                    c_name = h3_tag.get_text().strip() if h3_tag else ""
+                    
+                    p_mono = l.find('p', class_=lambda c: c and 'font-mono' in c)
+                    number_val = p_mono.get_text().strip() if p_mono else f"+{num}"
+                    
+                    # Find count tag
+                    p_tags = l.find_all('p')
+                    sms_count = ""
+                    for pt in p_tags:
+                        pt_text = pt.get_text().strip()
+                        if "SMS" in pt_text:
+                            sms_count = pt_text
+                            break
+                            
+                    span_flag = l.find('span')
+                    flag = span_flag.get_text().strip() if span_flag else ""
+                    
+                    numbers.append({
+                        'number': num,
+                        'display_number': number_val,
+                        'country_name': c_name,
+                        'sms_count': sms_count,
+                        'flag': flag
+                    })
+                    
+        # Deduplicate
+        unique_numbers = []
+        seen = set()
+        for n in numbers:
+            if n['number'] not in seen:
+                seen.add(n['number'])
+                unique_numbers.append(n)
+                
+        return jsonify(unique_numbers)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/sms/inbox')
+def get_sms_inbox():
+    number = request.args.get('number', '').strip()
+    if not number or not number.isdigit():
+        return jsonify({'error': 'Valid number is required'}), 400
+    try:
+        from bs4 import BeautifulSoup
+        url = f"https://sms24.me/en/numbers/{number}"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+        }
+        r = requests.get(url, headers=headers, timeout=10)
+        if r.status_code != 200:
+            return jsonify({'error': f'Failed to fetch messages: HTTP {r.status_code}'}), 502
+            
+        soup = BeautifulSoup(r.text, 'html.parser')
+        articles = soup.find_all('article')
+        messages = []
+        for art in articles:
+            sender_a = art.find('a', href=True)
+            sender = sender_a.get_text().strip() if sender_a else "Unknown"
+            if sender.startswith("From:"):
+                sender = sender.replace("From:", "").strip()
+                
+            time_tag = art.find('time')
+            timestamp = time_tag.get_text().strip() if time_tag else "Unknown time"
+            
+            p_tag = art.find('p')
+            message_text = p_tag.get_text().strip() if p_tag else ""
+            
+            messages.append({
+                'sender': sender,
+                'time': timestamp,
+                'text': message_text
+            })
+            
+        return jsonify(messages)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 def run_server_on_android():
     os.makedirs('static', exist_ok=True)
     os.makedirs('templates', exist_ok=True)

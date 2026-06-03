@@ -144,6 +144,14 @@ const platformConfigs = {
         badgeText: 'Universal Mode',
         cardTitle: 'Universal All Video Downloader',
         cardDesc: 'TubeFlow extracts high-speed video streams from Twitter (X), Reddit, Twitch, Vimeo, DailyMotion, and 1,000+ supported sites.'
+    },
+    sms: {
+        themeClass: 'theme-sms',
+        placeholder: 'Not used',
+        iconClass: 'fa-solid fa-comment-sms',
+        badgeText: 'SMS Mode',
+        cardTitle: 'Temporary Virtual SMS Receiver',
+        cardDesc: 'Select a country and phone number to fetch verification messages online.'
     }
 };
 
@@ -199,7 +207,8 @@ function selectPlatform(platform, element = null) {
         const prefix = platform === 'youtube' ? 'btn-yt' : 
                        (platform === 'instagram' ? 'btn-ig' : 
                        (platform === 'tiktok' ? 'btn-tt' : 
-                       (platform === 'facebook' ? 'btn-fb' : 'btn-uni')));
+                       (platform === 'facebook' ? 'btn-fb' : 
+                       (platform === 'sms' ? 'btn-sms' : 'btn-uni'))));
         const activeTabButton = document.querySelector(`.${prefix}`);
         if (activeTabButton) activeTabButton.classList.add('active');
     }
@@ -214,6 +223,23 @@ function selectPlatform(platform, element = null) {
     activePlatformBadge.textContent = cfg.badgeText;
     downloaderCardTitle.textContent = cfg.cardTitle;
     downloaderCardDesc.textContent = cfg.cardDesc;
+
+    // Toggle Downloader Console vs SMS Console panels
+    const downloaderCard = document.getElementById('main-downloader-card');
+    const smsSection = document.getElementById('sms-section');
+    
+    if (platform === 'sms') {
+        if (downloaderCard) downloaderCard.classList.add('hidden');
+        if (resultsSection) resultsSection.classList.add('hidden');
+        if (progressSection) progressSection.classList.add('hidden');
+        if (smsSection) {
+            smsSection.classList.remove('hidden');
+            loadSMSCountries(); // load countries if not loaded yet
+        }
+    } else {
+        if (downloaderCard) downloaderCard.classList.remove('hidden');
+        if (smsSection) smsSection.classList.add('hidden');
+    }
 }
 
 // Auto Platform-Morphing on URL entry
@@ -1616,3 +1642,264 @@ window.addEventListener('appinstalled', (evt) => {
         installBtn.classList.add('hidden');
     }
 });
+
+// Virtual SMS Receiver State Variables
+let smsCountries = [];
+let activeSMSCountry = null;
+let activeSMSNumber = null;
+let smsRefreshInterval = null;
+
+// Load all countries from backend
+async function loadSMSCountries() {
+    const container = document.getElementById('sms-countries-container');
+    if (!container) return;
+    
+    // If already loaded, just render
+    if (smsCountries.length > 0) {
+        renderSMSCountries();
+        return;
+    }
+    
+    container.innerHTML = '<div class="sms-loading"><i class="fa-solid fa-circle-notch fa-spin"></i> Fetching countries...</div>';
+    
+    try {
+        const response = await fetch('/api/sms/countries');
+        const data = await response.json();
+        if (!response.ok || data.error) {
+            throw new Error(data.error || 'Failed to load countries');
+        }
+        smsCountries = data;
+        renderSMSCountries();
+    } catch (err) {
+        container.innerHTML = `<div class="sms-loading" style="color: #fca5a5;"><i class="fa-solid fa-triangle-exclamation"></i> Error: ${err.message}</div>`;
+    }
+}
+
+// Render the country list in left pane
+function renderSMSCountries(filterText = '') {
+    const container = document.getElementById('sms-countries-container');
+    if (!container) return;
+    
+    const query = filterText.toLowerCase().trim();
+    const filtered = smsCountries.filter(c => 
+        c.name.toLowerCase().includes(query) || 
+        c.code.toLowerCase().includes(query)
+    );
+    
+    if (filtered.length === 0) {
+        container.innerHTML = '<div class="sms-loading">No countries found.</div>';
+        return;
+    }
+    
+    container.innerHTML = filtered.map(c => `
+        <div class="sms-country-item" onclick="selectSMSCountry('${c.code}', '${c.name.replace(/'/g, "\\'")}', '${c.flag}')">
+            <div class="sms-c-info">
+                <span class="sms-c-flag">${c.flag || '🌐'}</span>
+                <span class="sms-c-name">${c.name}</span>
+            </div>
+            <span class="sms-c-count">${c.count || 'Active'}</span>
+        </div>
+    `).join('');
+}
+
+// Search and filter countries
+function filterCountries() {
+    const searchVal = document.getElementById('sms-country-search').value;
+    renderSMSCountries(searchVal);
+}
+
+// Select country -> Switch view to numbers list
+async function selectSMSCountry(code, name, flag) {
+    activeSMSCountry = code;
+    
+    document.getElementById('active-country-flag').textContent = flag || '🌐';
+    document.getElementById('active-country-name').textContent = name;
+    
+    const box = document.getElementById('sms-numbers-box');
+    const container = document.getElementById('sms-numbers-container');
+    const countriesList = document.getElementById('sms-countries-container');
+    const searchBox = document.querySelector('.sms-selector-pane .sms-search-box');
+    const titleEl = document.querySelector('.sms-selector-pane .sms-pane-title');
+    
+    if (countriesList) countriesList.classList.add('hidden');
+    if (searchBox) searchBox.classList.add('hidden');
+    if (titleEl) titleEl.classList.add('hidden');
+    if (box) box.classList.remove('hidden');
+    
+    container.innerHTML = '<div class="sms-loading"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading numbers...</div>';
+    
+    try {
+        const response = await fetch(`/api/sms/numbers?country=${code}`);
+        const data = await response.json();
+        if (!response.ok || data.error) {
+            throw new Error(data.error || 'Failed to load numbers');
+        }
+        
+        if (data.length === 0) {
+            container.innerHTML = '<div class="sms-loading">No active numbers.</div>';
+            return;
+        }
+        
+        container.innerHTML = data.map(n => `
+            <div class="sms-number-item ${activeSMSNumber === n.number ? 'active' : ''}" id="sms-num-${n.number}" onclick="selectSMSNumber('${n.number}', '${n.display_number}')">
+                <span class="sms-n-num">${n.display_number}</span>
+                <span class="sms-n-count">${n.sms_count || '0 messages'}</span>
+            </div>
+        `).join('');
+    } catch (err) {
+        container.innerHTML = `<div class="sms-loading" style="color: #fca5a5;"><i class="fa-solid fa-triangle-exclamation"></i> Error: ${err.message}</div>`;
+    }
+}
+
+// Go back from numbers list to country list
+function showCountryList() {
+    const box = document.getElementById('sms-numbers-box');
+    const countriesList = document.getElementById('sms-countries-container');
+    const searchBox = document.querySelector('.sms-selector-pane .sms-search-box');
+    const titleEl = document.querySelector('.sms-selector-pane .sms-pane-title');
+    
+    if (box) box.classList.add('hidden');
+    if (countriesList) countriesList.classList.remove('hidden');
+    if (searchBox) searchBox.classList.remove('hidden');
+    if (titleEl) titleEl.classList.remove('hidden');
+}
+
+// Select phone number -> Load message inbox
+function selectSMSNumber(number, displayNum) {
+    // Clear old active highlight
+    if (activeSMSNumber) {
+        const oldEl = document.getElementById(`sms-num-${activeSMSNumber}`);
+        if (oldEl) oldEl.classList.remove('active');
+    }
+    
+    activeSMSNumber = number;
+    const newEl = document.getElementById(`sms-num-${number}`);
+    if (newEl) newEl.classList.add('active');
+    
+    // Switch inbox viewports
+    document.getElementById('sms-inbox-placeholder').classList.add('hidden');
+    document.getElementById('sms-inbox-content').classList.remove('hidden');
+    
+    document.getElementById('active-sms-number').textContent = displayNum;
+    
+    // Fetch inbox messages
+    fetchSMSMessages(number);
+    
+    // Auto-refresh inbox every 10 seconds while this number is active and visible
+    if (smsRefreshInterval) clearInterval(smsRefreshInterval);
+    smsRefreshInterval = setInterval(() => {
+        if (activePlatform === 'sms' && activeSMSNumber === number) {
+            fetchSMSMessages(number, true); // silent refresh
+        }
+    }, 10000);
+}
+
+// Load verification messages from backend
+async function fetchSMSMessages(number, silent = false) {
+    const container = document.getElementById('sms-messages-container');
+    const refreshBtn = document.getElementById('sms-refresh-btn');
+    
+    if (!silent) {
+        container.innerHTML = '<div class="sms-loading"><i class="fa-solid fa-circle-notch fa-spin"></i> Syncing messages...</div>';
+    }
+    
+    if (refreshBtn) {
+        refreshBtn.disabled = true;
+        const icon = refreshBtn.querySelector('i');
+        if (icon) icon.className = 'fa-solid fa-rotate fa-spin';
+    }
+    
+    try {
+        const response = await fetch(`/api/sms/inbox?number=${number}`);
+        const data = await response.json();
+        if (!response.ok || data.error) {
+            throw new Error(data.error || 'Failed to load inbox');
+        }
+        
+        if (data.length === 0) {
+            container.innerHTML = '<div class="sms-loading">Inbox is empty. Waiting for SMS...</div>';
+        } else {
+            container.innerHTML = data.map(m => `
+                <div class="sms-bubble">
+                    <div class="sms-msg-meta">
+                        <span class="sms-msg-sender">From: ${escapeHtml(m.sender)}</span>
+                        <span class="sms-msg-time">${escapeHtml(m.time)}</span>
+                    </div>
+                    <div class="sms-msg-body">${escapeHtml(m.text)}</div>
+                </div>
+            `).join('');
+        }
+    } catch (err) {
+        if (!silent) {
+            container.innerHTML = `<div class="sms-loading" style="color: #fca5a5;"><i class="fa-solid fa-triangle-exclamation"></i> Sync Error: ${err.message}</div>`;
+        }
+    } finally {
+        if (refreshBtn) {
+            refreshBtn.disabled = false;
+            const icon = refreshBtn.querySelector('i');
+            if (icon) icon.className = 'fa-solid fa-rotate';
+        }
+    }
+}
+
+// Manual Refresh Trigger
+function refreshInbox() {
+    if (activeSMSNumber) {
+        fetchSMSMessages(activeSMSNumber);
+    }
+}
+
+// Copy active phone number helper
+function copyActiveNumber() {
+    if (!activeSMSNumber) return;
+    
+    // Strip everything except plus and digits for copying
+    const numText = document.getElementById('active-sms-number').textContent;
+    navigator.clipboard.writeText(numText.replace(/\s+/g, '')).then(() => {
+        showToastNotification('Phone number copied successfully!');
+    }).catch(err => {
+        console.error('Copy failed:', err);
+    });
+}
+
+// Simple floating notification toast
+function showToastNotification(message) {
+    let toast = document.getElementById('sms-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'sms-toast';
+        toast.style.position = 'fixed';
+        toast.style.bottom = '2rem';
+        toast.style.left = '50%';
+        toast.style.transform = 'translateX(-50%)';
+        toast.style.background = 'linear-gradient(135deg, #ff6b00, #a855f7)';
+        toast.style.color = '#fff';
+        toast.style.padding = '0.75rem 1.5rem';
+        toast.style.borderRadius = '30px';
+        toast.style.fontWeight = 'bold';
+        toast.style.fontSize = '0.9rem';
+        toast.style.boxShadow = '0 10px 25px rgba(255, 107, 0, 0.4)';
+        toast.style.zIndex = '9999';
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s ease';
+        document.body.appendChild(toast);
+    }
+    
+    toast.textContent = message;
+    toast.style.opacity = '1';
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+    }, 2500);
+}
+
+// HTML Escaper utility
+function escapeHtml(unsafe) {
+    if (!unsafe) return '';
+    return unsafe
+         .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         .replace(/"/g, "&quot;")
+         .replace(/'/g, "&#039;");
+}
