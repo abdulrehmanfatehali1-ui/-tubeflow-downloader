@@ -2051,6 +2051,10 @@ function loadMailAccounts() {
         if (stored) {
             mailAccounts = JSON.parse(stored);
         }
+        
+        // Filter out legacy 1secmail accounts
+        mailAccounts = mailAccounts.filter(acc => acc.email && !acc.email.includes('1secmail'));
+        
         if (active && mailAccounts.some(acc => acc.email === active)) {
             activeMailAddress = active;
         } else if (mailAccounts.length > 0) {
@@ -2280,9 +2284,14 @@ async function refreshEmailInbox(silent = false) {
                     return refreshEmailInbox(silent); // Retry fetch
                 }
             }
-            // If account has expired or been deleted on Mail.tm (404/403), remove it and spawn a fresh one
-            if (err.message.includes('404') || err.message.includes('HTTP Error 404') || err.message.includes('403') || err.message.includes('HTTP Error 403')) {
-                console.warn(`Mailbox ${account.email} has expired on Mail.tm. Spawning a fresh address...`);
+            // If account has expired, been deleted, or has invalid credentials/token (404/403 or JWT/Token/1secmail errors), remove it and spawn a fresh one
+            if (
+                err.message.includes('404') || err.message.includes('HTTP Error 404') || 
+                err.message.includes('403') || err.message.includes('HTTP Error 403') ||
+                err.message.includes('JWT') || err.message.includes('Token') || err.message.includes('Credentials') ||
+                account.email.includes('1secmail')
+            ) {
+                console.warn(`Mailbox ${account.email} has expired/invalid token on Mail.tm. Spawning a fresh address...`);
                 mailAccounts = mailAccounts.filter(acc => acc.email !== account.email);
                 saveMailAccounts();
                 if (mailAccounts.length > 0) {
