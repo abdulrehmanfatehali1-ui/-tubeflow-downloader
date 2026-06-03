@@ -1487,8 +1487,13 @@ def universal_server_download_worker(url, format_id, task_id, quality_label, for
                         break
                 
                 if cobalt_res:
-                    direct_url = cobalt_res['data'].get('url')
-                    title = cobalt_res['data'].get('filename') or "video"
+                    cobalt_data = cobalt_res['data']
+                    direct_url = cobalt_data.get('url') or cobalt_data.get('tunnel')
+                    if not direct_url and cobalt_data.get('status') == 'picker':
+                        items = cobalt_data.get('picker', [])
+                        if items:
+                            direct_url = items[0].get('url') or items[0].get('tunnel')
+                    title = cobalt_data.get('filename') or "video"
                     if title.endswith('.mp4') or title.endswith('.webm') or title.endswith('.mkv'):
                         title = title.rsplit('.', 1)[0]
                         

@@ -908,14 +908,70 @@ async function getCobaltMergedLink(videoUrl, qualityLabel, isAudio = false) {
     throw new Error("SaaS merge servers are currently busy. Please try a standard 'Direct' resolution.");
 }
 
-// Trigger Asynchronous progress-monitored download (100% Server-Side task pipeline with realtime progress)
+// Trigger Asynchronous progress-monitored download (100% Client-Side Cobalt bypass first, Server-Side fallback)
 async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     if (!currentVideo) return;
     
+    const url = currentVideo.url;
     const title = currentVideo.title;
     const downloadFilename = `${title.replace(/[\\/*?"<>|]/g, '')}_${qualityLabel}.${ext}`;
-    
-    // Route all downloads (merge, combined, audio) via our robust, 100% working background task downloader
+    const isAudio = formatType === 'audio' || qualityLabel === 'Audio' || ext === 'mp3' || ext === 'm4a';
+
+    const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
+
+    // Helper: trigger direct browser download
+    function triggerBrowserDownload(downloadUrl, filename) {
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    if (isYouTube) {
+        // Show progress UI section
+        const progressFill = document.getElementById('progress-bar-fill');
+        const progressPercent = document.getElementById('progress-percent');
+        const progressStatus = document.getElementById('progress-status');
+        const progressFilename = document.getElementById('progress-filename');
+
+        showStatus('Processing download... Please wait.', 'loading');
+        progressSection.classList.remove('hidden');
+        progressSection.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        progressFilename.textContent = downloadFilename;
+        progressFill.style.width = '20%';
+        progressFill.classList.add('pulsing-fill');
+        progressPercent.textContent = 'Connecting';
+        toggleDownloadButtons(false);
+
+        progressStatus.innerHTML = `<i class="fa-solid fa-bolt fa-spin font-accent"></i> Bypassing YouTube blockages via client-side node (no server load)...`;
+
+        try {
+            // Attempt high-speed client-side Cobalt resolution directly in the browser!
+            // This runs on the client's residential IP → 100% immune to server IP blocks!
+            const res = await getCobaltMergedLink(url, qualityLabel, isAudio);
+            if (res && res.url) {
+                progressFill.style.width = '100%';
+                progressFill.classList.remove('pulsing-fill');
+                progressPercent.textContent = '100%';
+                progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Bypass successful! Starting high-speed download...</span>`;
+                
+                triggerBrowserDownload(res.url, downloadFilename);
+                showStatus('Download started successfully!', 'success');
+                toggleDownloadButtons(true);
+                setTimeout(() => progressSection.classList.add('hidden'), 5000);
+                return;
+            }
+        } catch (err) {
+            console.warn("Client-side Cobalt bypass failed. Falling back to server-side pipeline...", err);
+        }
+
+        // Fallback: If client-side bypass fails, route to server-side pipeline
+        progressStatus.innerHTML = `<i class="fa-solid fa-server fa-spin font-accent"></i> Client bypass busy. Routing to server-side pipeline...`;
+    }
+
+    // Route to server-side download manager
     startServerSideDownload(formatId, ext, qualityLabel, formatType, downloadFilename);
 }
 
