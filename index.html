@@ -21,6 +21,11 @@
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
+    <!-- Firebase Compat SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    
     <!-- Custom CSS -->
     <link rel="stylesheet" href="static/styles.css">
 </head>
@@ -81,6 +86,22 @@
                         <i class="fa-solid fa-cloud-arrow-down"></i>
                         <span>Install App</span>
                     </button>
+                    <!-- Firebase User Profile / Login Panel -->
+                    <div class="user-auth-widget" id="user-auth-widget">
+                        <button id="auth-trigger-btn" class="btn btn-secondary btn-sm auth-btn" onclick="openAuthModal()">
+                            <i class="fa-solid fa-user-lock"></i>
+                            <span>Sign In</span>
+                        </button>
+                        <div id="user-profile-menu" class="user-profile-menu hidden">
+                            <div class="user-info">
+                                <img id="user-avatar" class="user-avatar" src="" alt="Profile">
+                                <span id="user-name" class="user-name">User</span>
+                            </div>
+                            <button class="btn-logout" onclick="logoutUser()" title="Sign Out">
+                                <i class="fa-solid fa-right-from-bracket"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </header>
 
@@ -549,6 +570,64 @@
 
     <!-- Hidden iframe for background downloading -->
     <iframe id="download-iframe" style="display: none;"></iframe>
+
+    <!-- Firebase Authentication Modal -->
+    <div id="auth-modal" class="auth-modal hidden">
+        <div class="auth-modal-overlay" onclick="closeAuthModal()"></div>
+        <div class="auth-modal-content card glass-card">
+            <button class="auth-modal-close" onclick="closeAuthModal()">&times;</button>
+            
+            <div class="auth-modal-header">
+                <h2>Access Portal</h2>
+                <p>Sign in to sync your search and download history</p>
+            </div>
+            
+            <div class="auth-tabs">
+                <button class="auth-tab active" id="tab-login-btn" onclick="switchAuthTab('login')">Sign In</button>
+                <button class="auth-tab" id="tab-register-btn" onclick="switchAuthTab('register')">Register</button>
+            </div>
+            
+            <!-- Login Form -->
+            <form id="login-form" class="auth-form" onsubmit="event.preventDefault(); handleEmailLogin();">
+                <div class="auth-form-group">
+                    <label for="login-email">Email Address</label>
+                    <input type="email" id="login-email" required placeholder="name@example.com">
+                </div>
+                <div class="auth-form-group">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" required placeholder="Enter password">
+                </div>
+                <button type="submit" id="btn-login-submit" class="btn btn-primary btn-block">Sign In</button>
+            </form>
+            
+            <!-- Register Form (Hidden by default) -->
+            <form id="register-form" class="auth-form hidden" onsubmit="event.preventDefault(); handleEmailRegister();">
+                <div class="auth-form-group">
+                    <label for="register-email">Email Address</label>
+                    <input type="email" id="register-email" required placeholder="name@example.com">
+                </div>
+                <div class="auth-form-group">
+                    <label for="register-password">Password</label>
+                    <input type="password" id="register-password" required placeholder="At least 6 characters">
+                </div>
+                <button type="submit" id="btn-register-submit" class="btn btn-primary btn-block">Create Account</button>
+            </form>
+            
+            <div class="auth-error hidden" id="auth-error-msg">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>Error details here...</span>
+            </div>
+            
+            <div class="auth-divider">
+                <span>OR CONTINUE WITH</span>
+            </div>
+            
+            <button class="google-login-btn" onclick="handleGoogleLogin()">
+                <i class="fa-brands fa-google font-accent"></i>
+                <span>Sign in with Google</span>
+            </button>
+        </div>
+    </div>
 
     <!-- Custom JS -->
     <script src="static/app.js"></script>

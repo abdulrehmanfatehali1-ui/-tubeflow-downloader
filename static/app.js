@@ -12,6 +12,197 @@ let activeTab = 'video';
 let activePlatform = 'youtube';
 let activeDownloadInterval = null;
 
+// Firebase Configuration & Initialization
+const firebaseConfig = {
+  apiKey: "AIzaSyA1d7MGsCymo-G1Bgxo2BLAovrQ3_dQHwo",
+  authDomain: "best-d2cc5.firebaseapp.com",
+  databaseURL: "https://best-d2cc5-default-rtdb.firebaseio.com",
+  projectId: "best-d2cc5",
+  storageBucket: "best-d2cc5.firebasestorage.app",
+  messagingSenderId: "303128753531",
+  appId: "1:303128753531:web:679e6f2f9265789188b9de"
+};
+
+let dbRef = null;
+let currentUser = null;
+let firebaseHistory = [];
+
+if (typeof firebase !== 'undefined') {
+    firebase.initializeApp(firebaseConfig);
+    
+    firebase.auth().onAuthStateChanged((user) => {
+        currentUser = user;
+        const authTriggerBtn = document.getElementById('auth-trigger-btn');
+        const userProfileMenu = document.getElementById('user-profile-menu');
+        const userAvatar = document.getElementById('user-avatar');
+        const userName = document.getElementById('user-name');
+        
+        if (user) {
+            if (authTriggerBtn) authTriggerBtn.classList.add('hidden');
+            if (userProfileMenu) userProfileMenu.classList.remove('hidden');
+            
+            if (userName) userName.textContent = user.displayName || user.email.split('@')[0];
+            if (userAvatar) {
+                userAvatar.src = user.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100';
+            }
+            
+            dbRef = firebase.database().ref(`users/${user.uid}/history`);
+            syncHistoryFromDb();
+        } else {
+            if (authTriggerBtn) authTriggerBtn.classList.remove('hidden');
+            if (userProfileMenu) userProfileMenu.classList.add('hidden');
+            
+            dbRef = null;
+            firebaseHistory = [];
+            renderHistory();
+        }
+    });
+}
+
+function syncHistoryFromDb() {
+    if (!dbRef) return;
+    dbRef.once('value').then((snapshot) => {
+        const dbData = snapshot.val();
+        let list = [];
+        if (dbData) {
+            if (Array.isArray(dbData)) {
+                list = dbData.filter(item => item !== null);
+            } else if (typeof dbData === 'object') {
+                list = Object.values(dbData);
+            }
+        }
+        
+        const localHistory = getLocalHistoryOnly();
+        let combined = [...list];
+        localHistory.forEach(localItem => {
+            if (!combined.some(dbItem => dbItem.url === localItem.url)) {
+                combined.unshift(localItem);
+            }
+        });
+        
+        if (combined.length > 6) {
+            combined = combined.slice(0, 6);
+        }
+        
+        firebaseHistory = combined;
+        dbRef.set(firebaseHistory);
+        localStorage.setItem('tubeflow_history', JSON.stringify(firebaseHistory));
+        renderHistory();
+    }).catch(err => {
+        console.error("Database sync failed:", err);
+    });
+}
+
+// Auth UI / Modal Handlers
+function openAuthModal() {
+    const modal = document.getElementById('auth-modal');
+    const errEl = document.getElementById('auth-error-msg');
+    if (errEl) errEl.classList.add('hidden');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeAuthModal() {
+    const modal = document.getElementById('auth-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function switchAuthTab(tab) {
+    const loginForm = document.getElementById('login-form');
+    const registerForm = document.getElementById('register-form');
+    const loginTab = document.getElementById('tab-login-btn');
+    const registerTab = document.getElementById('tab-register-btn');
+    const errEl = document.getElementById('auth-error-msg');
+    
+    if (errEl) errEl.classList.add('hidden');
+    
+    if (tab === 'login') {
+        if (loginForm) loginForm.classList.remove('hidden');
+        if (registerForm) registerForm.classList.add('hidden');
+        if (loginTab) loginTab.classList.add('active');
+        if (registerTab) registerTab.classList.remove('active');
+    } else {
+        if (loginForm) loginForm.classList.add('hidden');
+        if (registerForm) registerForm.classList.remove('hidden');
+        if (loginTab) loginTab.classList.remove('active');
+        if (registerTab) registerTab.classList.add('active');
+    }
+}
+
+function showAuthError(message) {
+    const errEl = document.getElementById('auth-error-msg');
+    if (errEl) {
+        errEl.querySelector('span').textContent = message;
+        errEl.classList.remove('hidden');
+    }
+}
+
+async function handleEmailLogin() {
+    const email = document.getElementById('login-email').value.trim();
+    const pass = document.getElementById('login-password').value;
+    const btn = document.getElementById('btn-login-submit');
+    const origHtml = btn.innerHTML;
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Signing In...';
+    
+    try {
+        await firebase.auth().signInWithEmailAndPassword(email, pass);
+        closeAuthModal();
+    } catch (err) {
+        showAuthError(err.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+    }
+}
+
+async function handleEmailRegister() {
+    const email = document.getElementById('register-email').value.trim();
+    const pass = document.getElementById('register-password').value;
+    const btn = document.getElementById('btn-register-submit');
+    const origHtml = btn.innerHTML;
+    
+    if (pass.length < 6) {
+        showAuthError("Password must be at least 6 characters.");
+        return;
+    }
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Creating...';
+    
+    try {
+        await firebase.auth().createUserWithEmailAndPassword(email, pass);
+        closeAuthModal();
+    } catch (err) {
+        showAuthError(err.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+    }
+}
+
+async function handleGoogleLogin() {
+    const errEl = document.getElementById('auth-error-msg');
+    if (errEl) errEl.classList.add('hidden');
+    
+    try {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        await firebase.auth().signInWithPopup(provider);
+        closeAuthModal();
+    } catch (err) {
+        showAuthError(err.message);
+    }
+}
+
+async function logoutUser() {
+    try {
+        await firebase.auth().signOut();
+    } catch (err) {
+        console.error("Sign out failed:", err);
+    }
+}
+
+
 // Helper: get proxied thumbnail URL to bypass hotlink protection on Pinterest, Instagram, TikTok, Facebook, etc.
 function getProxiedThumbnail(thumbnailUrl) {
     if (!thumbnailUrl) return '';
@@ -1697,16 +1888,21 @@ function startServerSideDownload(formatId, ext, qualityLabel, formatTypeOrIsMerg
 }
 
 // LocalStorage Search History Manager
-function getHistory() {
+function getLocalHistoryOnly() {
     const history = localStorage.getItem('tubeflow_history');
     return history ? JSON.parse(history) : [];
 }
 
+function getHistory() {
+    if (currentUser) {
+        return firebaseHistory;
+    }
+    return getLocalHistoryOnly();
+}
+
 function saveToHistory(video) {
     let history = getHistory();
-    // Exclude duplicates
     history = history.filter(item => item.url !== video.url);
-    // Insert at front
     history.unshift({
         url: video.url,
         title: video.title,
@@ -1717,9 +1913,13 @@ function saveToHistory(video) {
         timestamp: Date.now()
     });
     
-    // Cap history to 6 items
     if (history.length > 6) {
         history.pop();
+    }
+    
+    if (currentUser && dbRef) {
+        firebaseHistory = history;
+        dbRef.set(firebaseHistory);
     }
     
     localStorage.setItem('tubeflow_history', JSON.stringify(history));
@@ -1727,14 +1927,24 @@ function saveToHistory(video) {
 }
 
 function deleteHistoryItem(url, event) {
-    event.stopPropagation(); // Avoid triggering card click
+    if (event) event.stopPropagation();
     let history = getHistory();
     history = history.filter(item => item.url !== url);
+    
+    if (currentUser && dbRef) {
+        firebaseHistory = history;
+        dbRef.set(firebaseHistory);
+    }
+    
     localStorage.setItem('tubeflow_history', JSON.stringify(history));
     renderHistory();
 }
 
 function clearHistory() {
+    if (currentUser && dbRef) {
+        firebaseHistory = [];
+        dbRef.set(firebaseHistory);
+    }
     localStorage.removeItem('tubeflow_history');
     renderHistory();
 }
