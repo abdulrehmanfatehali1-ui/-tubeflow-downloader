@@ -1886,6 +1886,47 @@ def get_finished_file():
     
     return Response(stream_with_context(generate_file()), headers=response_headers)
 
+@app.route('/api/proxy-stream')
+def proxy_stream():
+    url = request.args.get('url', '').strip()
+    filename = request.args.get('filename', 'video.mp4').strip()
+    if not url:
+        return "URL parameter is required", 400
+    
+    # Clean filename
+    filename = "".join(c for c in filename if c.isalnum() or c in (' ', '_', '-', '.', '(', ')')).strip()
+    if not filename:
+        filename = 'video.mp4'
+        
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        # Start a streaming connection to the remote stream
+        r = requests.get(url, headers=headers, stream=True, timeout=30)
+        r.raise_for_status()
+        
+        # Stream content back to user
+        def generate():
+            for chunk in r.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    yield chunk
+                    
+        content_type = r.headers.get('Content-Type', 'application/octet-stream')
+        content_length = r.headers.get('Content-Length')
+        
+        resp_headers = {
+            'Content-Disposition': f'attachment; filename="{filename}"',
+            'Content-Type': content_type,
+            'Access-Control-Allow-Origin': '*'
+        }
+        if content_length:
+            resp_headers['Content-Length'] = content_length
+            
+        return Response(stream_with_context(generate()), headers=resp_headers)
+    except Exception as e:
+        return f"Stream error: {str(e)}", 500
+
 # Free Virtual SMS Receiver endpoints using sms24.me
 @app.route('/api/sms/countries')
 def get_sms_countries():

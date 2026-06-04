@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tubeflow-cache-v17';
+const CACHE_NAME = 'tubeflow-cache-v18';
 const ASSETS = [
   './',
   './index.html',
@@ -12,6 +12,7 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(ASSETS).catch(err => console.warn("Cache warm failed", err));
@@ -29,6 +30,8 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
+    }).then(() => {
+      return self.clients.claim();
     })
   );
 });

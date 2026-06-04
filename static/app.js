@@ -1714,10 +1714,14 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
             progressFill.style.width = '60%';
             progressPercent.textContent = '60%';
             
-            // Direct anchor click - bypasses CORS restriction entirely
+            // Direct anchor click - bypasses CORS restriction entirely using proxy-stream
             try {
+                const finalDlUrl = isServerSupported() 
+                    ? `${API_BASE_URL}/api/proxy-stream?url=${encodeURIComponent(res.url)}&filename=${encodeURIComponent(downloadFilename)}`
+                    : res.url;
+                    
                 const link = document.createElement('a');
-                link.href = res.url;
+                link.href = finalDlUrl;
                 link.download = downloadFilename;
                 link.target = '_blank';
                 link.rel = 'noopener';
@@ -1732,7 +1736,7 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
                 showStatus('Download started successfully!', 'success');
                 
                 // Also show manual save button in case browser blocks auto-download
-                showDownloadSaveButton(res.url, downloadFilename, true);
+                showDownloadSaveButton(finalDlUrl, downloadFilename, true);
                 toggleDownloadButtons(true);
                 return;
             } catch (dlErr) {
