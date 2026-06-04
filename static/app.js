@@ -2009,8 +2009,31 @@ const installBtn = document.getElementById('install-app-btn');
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log('TubeFlow SW: Registered successfully with scope:', reg.scope))
+            .then(reg => {
+                console.log('TubeFlow SW: Registered successfully with scope:', reg.scope);
+                
+                // Automatically reload when a new service worker has installed
+                reg.addEventListener('updatefound', () => {
+                    const newWorker = reg.installing;
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            console.log('New update available. Force reloading...');
+                            window.location.reload();
+                        }
+                    });
+                });
+            })
             .catch(err => console.error('TubeFlow SW: Registration failed:', err));
+    });
+    
+    // Reload the page when the service worker claims clients (skipWaiting + clients.claim)
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) {
+            refreshing = true;
+            console.log('Controller changed. Reloading page...');
+            window.location.reload();
+        }
     });
 }
 
