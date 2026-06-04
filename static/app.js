@@ -1714,10 +1714,10 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
             progressFill.style.width = '60%';
             progressPercent.textContent = '60%';
             
-            // Direct anchor click - bypasses CORS restriction entirely using proxy-stream
+            // Direct anchor click - bypasses CORS restriction entirely using proxy-bypass-stream
             try {
                 const finalDlUrl = isServerSupported() 
-                    ? `${API_BASE_URL}/api/proxy-stream?url=${encodeURIComponent(res.url)}&filename=${encodeURIComponent(downloadFilename)}`
+                    ? `${API_BASE_URL}/api/proxy-bypass-stream?url=${encodeURIComponent(res.url)}&filename=${encodeURIComponent(downloadFilename)}`
                     : res.url;
                     
                 const link = document.createElement('a');

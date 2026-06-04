@@ -1886,8 +1886,8 @@ def get_finished_file():
     
     return Response(stream_with_context(generate_file()), headers=response_headers)
 
-@app.route('/api/proxy-stream')
-def proxy_stream():
+@app.route('/api/proxy-bypass-stream')
+def proxy_bypass_stream():
     url = request.args.get('url', '').strip()
     filename = request.args.get('filename', 'video.mp4').strip()
     if not url:
