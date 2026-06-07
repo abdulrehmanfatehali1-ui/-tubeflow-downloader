@@ -1021,7 +1021,7 @@ async function handleFetch(urlToFetch = null) {
     }
 
     // Set Loading State
-    showStatus('Connecting and bypassing blockages... Please wait.', 'loading');
+    showStatus('Connecting... Please wait.', 'loading');
     setLoading(true);
     resultsSection.classList.add('hidden');
     progressSection.classList.add('hidden');
@@ -1041,7 +1041,7 @@ async function handleFetch(urlToFetch = null) {
     //   - This is what originally worked 100%!
     // =========================================================
     if (isYouTube) {
-        showStatus('Bypassing YouTube via browser-side Invidious/Piped nodes...', 'loading');
+        showStatus('Loading video details...', 'loading');
         try {
             data = await extractYouTubeClientSide(url);
         } catch (clientErr) {
@@ -1054,7 +1054,7 @@ async function handleFetch(urlToFetch = null) {
     // =========================================================
     // =========================================================
     if (!data) {
-        showStatus('Activating Cobalt bypass extraction engine...', 'loading');
+        showStatus('Searching video sources...', 'loading');
         try {
             const meta = await fetchClientSideMetadata(url);
             data = buildCobaltResult(url, meta.title, meta.author, meta.thumbnail);
@@ -1103,7 +1103,7 @@ async function fetchClientSideMetadata(url) {
     const isPinterest = url.includes('pinterest.com') || url.includes('pin.it');
 
     let title = 'Extracted Video';
-    let author = 'TubeFlow Bypass Engine';
+    let author = 'TubeFlow Engine';
     let thumbnail = '';
 
     // Helper to expand short URL using corsproxy
@@ -1218,13 +1218,13 @@ async function fetchClientSideMetadata(url) {
 function buildCobaltResult(url, title, author, thumbnail) {
     return {
         title: title,
-        author: author || "TubeFlow Bypass Engine",
+        author: author || "TubeFlow Engine",
         thumbnail: thumbnail || '',
         duration: 0,
         duration_formatted: "Direct Stream",
         views: 0,
         views_formatted: "—",
-        description: "Extracted and bypassed successfully via Cobalt unblocked server pool.",
+        description: "Extracted and ready for download.",
         video_formats: [
             {
                 format_id: btoa(`cobalt|1080p`),
@@ -1233,7 +1233,7 @@ function buildCobaltResult(url, title, author, thumbnail) {
                 quality_label: '1080p',
                 filesize: 0,
                 type: 'combined',
-                note: '🔥 Full HD 1080p (Cobalt Bypass)'
+                note: '🔥 Full HD 1080p'
             },
             {
                 format_id: btoa(`cobalt|720p`),
@@ -1242,7 +1242,7 @@ function buildCobaltResult(url, title, author, thumbnail) {
                 quality_label: '720p',
                 filesize: 0,
                 type: 'combined',
-                note: '⚡ HD 720p (Cobalt Bypass)'
+                note: '⚡ HD 720p'
             },
             {
                 format_id: btoa(`cobalt|480p`),
@@ -1251,7 +1251,7 @@ function buildCobaltResult(url, title, author, thumbnail) {
                 quality_label: '480p',
                 filesize: 0,
                 type: 'combined',
-                note: '📱 SD 480p (Cobalt Bypass)'
+                note: '📱 SD 480p'
             },
             {
                 format_id: btoa(`cobalt|360p`),
@@ -1260,7 +1260,7 @@ function buildCobaltResult(url, title, author, thumbnail) {
                 quality_label: '360p',
                 filesize: 0,
                 type: 'combined',
-                note: '📉 Low SD 360p (Cobalt Bypass)'
+                note: '📉 Low SD 360p'
             }
         ],
         audio_formats: [
@@ -1270,7 +1270,7 @@ function buildCobaltResult(url, title, author, thumbnail) {
                 quality_label: 'Audio',
                 filesize: 0,
                 type: 'audio',
-                note: '🎵 High-Quality MP3 (Cobalt Bypass)'
+                note: '🎵 High-Quality MP3'
             }
         ],
         url: url
@@ -1503,13 +1503,9 @@ function toggleDownloadButtons(enabled) {
 // Client-Side high-resolution video + audio merger using public Cobalt APIs
 async function getCobaltMergedLink(videoUrl, qualityLabel, isAudio = false) {
     const instances = [
+        'https://nuko-c.meowing.de',
         'https://apicobalt.mgytr.top',
-        'https://cobaltapi.kittycat.boo',
-        'https://dog.kittycat.boo',
-        'https://fox.kittycat.boo',
-        'https://api.cobalt.liubquanti.click',
-        'https://api.cobalt.blackcat.sweeux.org',
-        'https://cobaltapi.cjs.nz'
+        'https://api.qwkuns.me'
     ];
     
     let q = '1080';
@@ -1582,7 +1578,7 @@ async function getCobaltMergedLink(videoUrl, qualityLabel, isAudio = false) {
             .finally(() => {
                 completed++;
                 if (completed >= targets.length && !resolved) {
-                    reject(new Error("All bypass servers failed."));
+                    reject(new Error("All download servers failed."));
                 }
             });
         });
@@ -1591,7 +1587,7 @@ async function getCobaltMergedLink(videoUrl, qualityLabel, isAudio = false) {
         setTimeout(() => {
             if (!resolved) {
                 controllers.forEach(c => c.abort());
-                reject(new Error("Bypass servers connection timeout."));
+                reject(new Error("Connection timeout."));
             }
         }, 6000);
     });
@@ -1702,7 +1698,7 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
     progressPercent.textContent = 'Connecting';
     toggleDownloadButtons(false);
 
-    progressStatus.innerHTML = `<i class="fa-solid fa-bolt fa-spin font-accent"></i> Bypassing blockages via client-side download node...`;
+    progressStatus.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin font-accent"></i> Preparing download...`;
 
     try {
         // Attempt high-speed client-side Cobalt resolution directly in the browser!
@@ -1710,45 +1706,60 @@ async function triggerDownload(formatId, ext, qualityLabel, formatType) {
         const res = await getCobaltMergedLink(url, qualityLabel, isAudio);
         if (res && res.url) {
             directStreamUrl = res.url;
-            progressStatus.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin font-accent"></i> Directing download stream...`;
+            progressStatus.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin font-accent"></i> Initializing download stream...`;
             progressFill.style.width = '60%';
             progressPercent.textContent = '60%';
             
-            // Direct anchor click - bypasses CORS restriction entirely using proxy-bypass-stream
+            // Attempt to download the Cobalt stream URL directly in the browser via fetchWithProgress
             try {
-                const finalDlUrl = isServerSupported() 
-                    ? `${API_BASE_URL}/api/proxy-bypass-stream?url=${encodeURIComponent(res.url)}&filename=${encodeURIComponent(downloadFilename)}`
-                    : res.url;
-                    
-                const link = document.createElement('a');
-                link.href = finalDlUrl;
-                link.download = downloadFilename;
-                link.target = '_blank';
-                link.rel = 'noopener';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
+                showStatus('Downloading file...', 'loading');
+                await triggerBrowserDownload(res.url, downloadFilename);
                 
                 progressFill.style.width = '100%';
                 progressFill.classList.remove('pulsing-fill');
                 progressPercent.textContent = '100%';
-                progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Bypass successful! Download started.</span>`;
-                showStatus('Download started successfully!', 'success');
-                
-                // Also show manual save button in case browser blocks auto-download
-                showDownloadSaveButton(finalDlUrl, downloadFilename, true);
+                progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Download completed!</span>`;
+                showStatus('Download completed successfully!', 'success');
                 toggleDownloadButtons(true);
                 return;
             } catch (dlErr) {
-                console.warn('Direct anchor click failed:', dlErr);
+                console.warn('Direct browser download failed, trying proxy...', dlErr);
+                // Fallback to proxy-bypass-stream if browser download fails
+                try {
+                    const finalDlUrl = isServerSupported() 
+                        ? `${API_BASE_URL}/api/proxy-bypass-stream?url=${encodeURIComponent(res.url)}&filename=${encodeURIComponent(downloadFilename)}`
+                        : res.url;
+                        
+                    const link = document.createElement('a');
+                    link.href = finalDlUrl;
+                    link.download = downloadFilename;
+                    link.target = '_blank';
+                    link.rel = 'noopener';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    
+                    progressFill.style.width = '100%';
+                    progressFill.classList.remove('pulsing-fill');
+                    progressPercent.textContent = '100%';
+                    progressStatus.innerHTML = `<span style="color: var(--success)"><i class="fa-solid fa-circle-check"></i> Download started!</span>`;
+                    showStatus('Download started successfully!', 'success');
+                    
+                    showDownloadSaveButton(finalDlUrl, downloadFilename, true);
+                    toggleDownloadButtons(true);
+                    return;
+                } catch (proxyErr) {
+                    console.error("Proxy fallback failed, opening in new tab:", proxyErr);
+                    window.open(res.url, '_blank');
+                }
             }
         }
     } catch (err) {
-        console.warn("Client-side Cobalt bypass failed. Falling back to server-side pipeline...", err);
+        console.warn("Client-side direct download failed. Falling back to server-side pipeline...", err);
     }
 
     // Fallback: If client-side bypass fails, route to server-side pipeline
-    progressStatus.innerHTML = `<i class="fa-solid fa-server fa-spin font-accent"></i> Client bypass failed. Routing to server-side pipeline...`;
+    progressStatus.innerHTML = `<i class="fa-solid fa-server fa-spin font-accent"></i> Connecting to server...`;
     startServerSideDownload(formatId, ext, qualityLabel, formatType, downloadFilename, directStreamUrl);
 }
 
@@ -1780,7 +1791,7 @@ function startServerSideDownload(formatId, ext, qualityLabel, formatTypeOrIsMerg
     progressPercent.textContent = 'Connecting';
     toggleDownloadButtons(false);
     
-    progressStatus.innerHTML = `<i class="fa-solid fa-server fa-spin font-accent"></i> Initializing secure server bypass connection...`;
+    progressStatus.innerHTML = `<i class="fa-solid fa-server fa-spin font-accent"></i> Initializing server connection...`;
     
     // Normalize formatType ('merge', 'combined', 'audio')
     let formatType = 'combined';
@@ -1796,7 +1807,7 @@ function startServerSideDownload(formatId, ext, qualityLabel, formatTypeOrIsMerg
     
     fetch(startUrl)
         .then(res => {
-            if (!res.ok) throw new Error("Server bypass connection could not be established");
+            if (!res.ok) throw new Error("Could not establish server connection");
             return res.json();
         })
         .then(data => {
@@ -1833,7 +1844,7 @@ function startServerSideDownload(formatId, ext, qualityLabel, formatTypeOrIsMerg
                         } else if (progress.status === 'merging') {
                             progressFill.style.width = '90%';
                             progressPercent.textContent = '95%';
-                            progressStatus.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> Merging high-definition tracks with FFmpeg on server...`;
+                            progressStatus.innerHTML = `<i class="fa-solid fa-compact-disc fa-spin font-accent"></i> Merging high-definition video and audio tracks...`;
                         } else if (progress.status === 'completed') {
                             clearInterval(activeDownloadInterval);
                             activeDownloadInterval = null;
@@ -1867,12 +1878,12 @@ function startServerSideDownload(formatId, ext, qualityLabel, formatTypeOrIsMerg
                     .catch(err => {
                         clearInterval(activeDownloadInterval);
                         activeDownloadInterval = null;
-                        handleDownloadFailure(err.message || "Bypass connection interrupted.");
+                        handleDownloadFailure(err.message || "Download connection interrupted.");
                     });
             }, 1000);
         })
         .catch(err => {
-            handleDownloadFailure(err.message || "Bypass routing failed.");
+            handleDownloadFailure(err.message || "Download failed.");
         });
         
     function handleDownloadFailure(errorMsg) {
@@ -1886,7 +1897,7 @@ function startServerSideDownload(formatId, ext, qualityLabel, formatTypeOrIsMerg
             showDownloadSaveButton(directStreamUrl, downloadFilename, true);
         }
         
-        progressStatus.innerHTML = `<span style="color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Bypass Failed: ${errorMsg}${fallbackMsg}</span>`;
+        progressStatus.innerHTML = `<span style="color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i> Download Failed: ${errorMsg}${fallbackMsg}</span>`;
         toggleDownloadButtons(true);
     }
 }

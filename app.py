@@ -106,13 +106,9 @@ PIPED_INSTANCES = [
 ]
 
 COBALT_INSTANCES = [
+    'https://nuko-c.meowing.de',
     'https://apicobalt.mgytr.top',
-    'https://cobaltapi.kittycat.boo',
-    'https://dog.kittycat.boo',
-    'https://fox.kittycat.boo',
-    'https://api.cobalt.liubquanti.click',
-    'https://api.cobalt.blackcat.sweeux.org',
-    'https://cobaltapi.cjs.nz'
+    'https://api.qwkuns.me'
 ]
 
 def get_dynamic_invidious_instances():
@@ -212,17 +208,17 @@ def parse_cobalt_info(data, url):
         'quality_label': '720p',
         'filesize': 0,
         'type': 'combined',
-        'note': 'Direct HD Stream (Bypassed)'
+        'note': 'Direct HD Stream'
     }]
     return {
         'title': title,
-        'author': 'Cobalt Attestation Bypass',
+        'author': 'TubeFlow Engine',
         'thumbnail': 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?q=80&w=300&auto=format&fit=crop',
         'duration': 0,
         'duration_formatted': 'Direct',
         'views': 1000,
         'views_formatted': 'Active Stream',
-        'description': 'Bypassed successfully via multi-layered dynamic proxy fallback routing.',
+        'description': 'Extracted successfully.',
         'video_formats': video_formats,
         'audio_formats': [],
         'url': url
@@ -960,13 +956,9 @@ def cobalt_tunnel():
     }
 
     cobalt_instances = [
-        'https://co.wuk.sh',
-        'https://api.cobalt.tools',
-        'https://cobalt.api.ryz.cx',
-        'https://cobalt.best',
-        'https://cobalt.flxbl.io',
-        'https://cobalt.urdh.dev',
-        'https://dl.cgm.rs'
+        'https://nuko-c.meowing.de',
+        'https://apicobalt.mgytr.top',
+        'https://api.qwkuns.me'
     ]
 
     for instance in cobalt_instances:
@@ -1038,13 +1030,9 @@ def cobalt_stream():
     }
 
     cobalt_instances = [
-        'https://co.wuk.sh',
-        'https://api.cobalt.tools',
-        'https://cobalt.api.ryz.cx',
-        'https://cobalt.best',
-        'https://cobalt.flxbl.io',
-        'https://cobalt.urdh.dev',
-        'https://dl.cgm.rs'
+        'https://nuko-c.meowing.de',
+        'https://apicobalt.mgytr.top',
+        'https://api.qwkuns.me'
     ]
 
     stream_url = None
@@ -1376,7 +1364,7 @@ def make_progress_hook(task_id):
     return progress_hook
 
 # Background Thread Runner for yt-dlp downloads
-def async_download_worker(url, format_id, task_id, title, is_merge):
+def async_download_worker(url, format_id, task_id, title, is_merge, quality_label=None, is_audio=False):
     try:
         temp_dir = tempfile.gettempdir()
         outtmpl = os.path.join(temp_dir, f"tubeflow_{task_id}.%(ext)s")
@@ -1441,11 +1429,11 @@ def async_download_worker(url, format_id, task_id, title, is_merge):
                 with yt_dlp.YoutubeDL(fallback_opts) as ydl:
                     ydl.download([url])
             except Exception as dl_err_final:
-                print(f"TubeFlow Async: yt-dlp blocked on download ({str(dl_err_final)}). Falling back to Cobalt server-side merge...")
+                print(f"TubeFlow Async: download blocked ({str(dl_err_final)}). Falling back to secondary engine...")
                 try:
                     cobalt_res = None
                     for instance in COBALT_INSTANCES:
-                        res = query_single_cobalt(instance, url)
+                        res = query_single_cobalt(instance, url, quality_label, is_audio)
                         if res:
                             cobalt_res = res
                             break
@@ -1454,7 +1442,7 @@ def async_download_worker(url, format_id, task_id, title, is_merge):
                         direct_url = cobalt_res['data'].get('url')
                         # Download direct Cobalt stream URL to our temp file
                         headers = {
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                         }
                         if curl_requests:
                             response = curl_requests.get(direct_url, headers=headers, stream=True, impersonate="chrome", timeout=20)
@@ -1462,7 +1450,8 @@ def async_download_worker(url, format_id, task_id, title, is_merge):
                             response = requests.get(direct_url, headers=headers, stream=True, timeout=20)
                         response.raise_for_status()
                         
-                        temp_dest = os.path.join(temp_dir, f"tubeflow_{task_id}.mp4")
+                        ext = 'mp3' if is_audio else 'mp4'
+                        temp_dest = os.path.join(temp_dir, f"tubeflow_{task_id}.{ext}")
                         total_size = int(response.headers.get('content-length', 0))
                         downloaded = 0
                         
@@ -1477,12 +1466,12 @@ def async_download_worker(url, format_id, task_id, title, is_merge):
                                             DOWNLOAD_TASKS[task_id].update({
                                                 'status': 'downloading',
                                                 'percent': percent,
-                                                'msg': f"Downloading via server-side bypass: {percent}% completed"
+                                                'msg': f"Downloading: {percent}% completed"
                                             })
                     else:
-                        raise Exception("Bypass servers are currently rate-limited. Please try again.")
+                        raise Exception("All download servers are currently rate-limited. Please try again.")
                 except Exception as fallback_err:
-                    raise Exception(f"Bypass Failed: {str(fallback_err)}")
+                    raise Exception(f"Download Failed: {str(fallback_err)}")
             
         # Discover output filepath
         ext = 'mp4'
@@ -1571,7 +1560,7 @@ def universal_server_download_worker(url, format_id, task_id, quality_label, for
                 DOWNLOAD_TASKS[task_id].update({
                     'status': 'downloading',
                     'percent': 10,
-                    'msg': 'Requesting unblocked high-speed bypass node...'
+                    'msg': 'Connecting to download stream...'
                 })
             try:
                 cobalt_res = None
@@ -1606,7 +1595,7 @@ def universal_server_download_worker(url, format_id, task_id, quality_label, for
                         DOWNLOAD_TASKS[task_id].update({
                             'status': 'downloading',
                             'percent': 25,
-                            'msg': 'Bypass secure connection established! Streaming bytes...'
+                            'msg': 'Connected! Downloading...'
                         })
                         
                     headers = {
@@ -1634,7 +1623,7 @@ def universal_server_download_worker(url, format_id, task_id, quality_label, for
                                     DOWNLOAD_TASKS[task_id].update({
                                         'status': 'downloading',
                                         'percent': mapped_pct,
-                                        'msg': f"Downloading via bypass node: {percent}% completed"
+                                        'msg': f"Downloading: {percent}% completed"
                                     })
                                     
                     safe_title = sanitize_filename(title)
@@ -1657,7 +1646,7 @@ def universal_server_download_worker(url, format_id, task_id, quality_label, for
             DOWNLOAD_TASKS[task_id].update({
                 'status': 'downloading',
                 'percent': 20,
-                'msg': 'Resolving server-side secure streams...'
+                'msg': 'Connecting to server...'
             })
             
         server_data = extract_video_data_server(url)
@@ -1719,7 +1708,7 @@ def universal_server_download_worker(url, format_id, task_id, quality_label, for
                             DOWNLOAD_TASKS[task_id].update({
                                 'status': 'downloading',
                                 'percent': mapped_pct,
-                                'msg': f"Downloading secure stream: {percent}% completed"
+                                'msg': f"Downloading: {percent}% completed"
                             })
                             
             safe_title = sanitize_filename(title)
@@ -1734,7 +1723,7 @@ def universal_server_download_worker(url, format_id, task_id, quality_label, for
                     'msg': "Download complete! Ready to save."
                 })
         else:
-            async_download_worker(url, server_format_id, task_id, title, is_merge)
+            async_download_worker(url, server_format_id, task_id, title, is_merge, quality_label, (format_type == 'audio'))
             
     except Exception as e:
         print(f"TubeFlow Universal Async Error: {str(e)}")
@@ -1742,7 +1731,7 @@ def universal_server_download_worker(url, format_id, task_id, quality_label, for
             if task_id in DOWNLOAD_TASKS:
                 DOWNLOAD_TASKS[task_id].update({
                     'status': 'error',
-                    'msg': f"Bypass Failed: {str(e)}"
+                    'msg': f"Download Failed: {str(e)}"
                 })
 
 # API 1: Start background download task
@@ -1805,7 +1794,7 @@ def start_async_download():
             'percent': 0,
             'speed': '0 KB/s',
             'eta': 'calculating...',
-            'msg': 'Initializing secure server bypass connection...',
+            'msg': 'Connecting to server...',
             'filepath': '',
             'filename': '',
             'created_at': time.time()
